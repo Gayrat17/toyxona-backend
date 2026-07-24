@@ -1,0 +1,98 @@
+TEXNIK TOPSHIRIQ (TZ)
+Loyiha nomi: To'yxona va Bar Bron qilish Tizimi (SaaS / Marketplace API)
+Texnologik stak: Python, Django, Django REST Framework (DRF), PostgreSQL,
+Celery/Redis (fon vazifalari uchun), Telegram Bot API.1.
+
+Loyihaning maqsadi va umumiy tavsifiUshbu loyiha O'zbekiston bozoridagi
+reallikka moslashtirilgan bo'lib, mijozlar va joy egalarini (to'yxonalar va barlar)
+ bog'lovchi platforma hisoblanadi.
+
+Tizim ikki xil biznes logikasini bitta platformada qo'llab-quvvatlaydi:
+To'y zallari (WeddingHall):
+Odatda smena bo'yicha (Tushlik / Kechki) ishlaydi, mehmon soni va
+belgilangan paketlar bo'yicha sotiladi, dekoratsiya variantlariga ega bo'ladi.
+Barlar (Bar): Kuyov navkar yoki kichik tadbirlar uchun soatlik (price_per_hour)
+ijaraga beriladi, smena va dekoratsiyalar qatnashmaydi.
+Jarayon faqat onlayn bron bilan tugamaydi — sayt orqali zakalat hisobga
+olingan holda so'rov yuboriladi va restoran egasi bilan oflayn uchrashuvda
+(meeting_date) menyu va stollar joylashuvi aniqlanadi.
+
+2. Foydalanuvchi rollari va huquqlari
+
+Mijoz (Client): Joylarni qidirish, paket va smenalarni tanlash, bron yuborish,
+ o'z bronlari holatini ko'rish.
+
+Joy egasi (Venue Owner): O'ziga tegishli to'yxona yoki barni qo'shish,
+ smenalar grafigini sozlash, kunlarni bloklash (ShiftBlock),
+ bronlarni boshqarish (HOLD, CONFIRMED, REJECTED), zakalat miqdorini belgilash.
+
+Platforma Admini (Superadmin): Tizimdagi barcha foydalanuvchilar, joylar va
+  moliyaviy oqimlarni nazorat qilish, yangi joy egalarini moderatsiyadan o'tkazish.
+3. Loyiha arxitekturasi va DRF App'larLoyiha quyidagi mustaqil Django ilovalariga
+ (apps) bo'linadi:Plaintext├── users/         # Foydalanuvchilar va avtentifikatsiya (JWT)
+
+├── venues/        # To'yxona, Bar, Smena, Paket, Dekoratsiya va Bloklash modellar
+├── bookings/      # Bronlash logikasi, kalendar algoritmi va validatsiyalar
+└── notifications/ # Telegram bot integratsiyasi va bildirishnomalar
+
+4. Ma'lumotlar modelining texnik sxemasi (ER diagramma asosi)
+
+4.1. venues appWeddingHall: owner, name, address, description, max_capacity,
+required_deposit (zakalat qoidasi), created_at.Bar: owner, name, address,
+description, capacity, price_per_hour, required_deposit, created_at.
+Shift (Faqat To'yxona uchun): hall, name (masalan: Tushlik), start_time,
+end_time, is_active.Package (Faqat To'yxona uchun): hall, guest_count
+(masalan: 300, 400), price (butun paket uchun umumiy summa), description.Decoration
+(Faqat To'yxona uchun): hall, name, additional_price.
+
+ShiftBlock: hall, shift, date, reason (admin sanani bron qilishdan yopishi).
+
+4.2. bookings appBaseBooking (Abstract Model): user, date, total_price,
+deposit_amount, is_deposit_paid, status (HOLD, PENDING, CONFIRMED, REJECTED,
+CANCELLED), expires_at (HOLD uchun), meeting_date, admin_notes, created_at.
+
+HallBooking: BaseBookingdan meros oladi + hall, shift, package, decoration.
+
+BarBooking: BaseBookingdan meros oladi + bar, start_time, end_time, guest_count.
+
+5. Asosiy biznes logikasi va validatsiya qoidalari
+
+5.1. Double-booking (Ustma-ust tushib qolish) himoyasiTo'y zali uchun: Bir xil hall,
+ date va shift bo'yicha statusi CONFIRMED, PENDING yoki muddati o'tmagan HOLD bo'lgan
+ bron mavjud bo'lsa, yangi bron qabul qilinmaydi. Shuningdek, ShiftBlock jadvalida
+ shu smena yopilgan bo'lsa xatolik beriladi.Bar uchun: Tanlangan sanada yangi bronning
+ start_time va end_time oralig'i mavjud aktiv bronlar bilan kesishsa (overlap),
+  so'rov rad etiladi.
+
+5.2. HOLD (Muzlatish) rejimiJoy egasi oflayn kelishuv paytida smenani status='HOLD'
+qilib belgilashi mumkin.HOLD statusiga avtomat expires_at (masalan, +24 soat) beriladi.
+
+Celery fon vazifasi har soatda tekshiruv o'tkazib, muddati o'tgan va tasdiqlanmagan
+HOLD bronlarni CANCELLED holatiga o'tkazadi.
+
+5.3. Telegram Bot bildirishnomalariMijoz saytdan bron yuborgan ancha (status: PENDING),
+ Django Signal orqali joy egasining Telegram botiga tezkor xabar ketadi.Xabar matnida:
+ To'yxona nomi, sana, smena/vaqt, mijozning ismi va telefon raqami, paket va umumiy
+ summa ko'rsatiladi.
+
+6. API Endpointlar spetsifikatsiyasi
+HTTP MetodEndpointTavsifKirish huquqi
+GET/api/v1/venues/halls/To'y zallari ro'yxati
+(filtrlash bilan)Hamma uchun
+
+GET/api/v1/venues/bars/Barlar ro'yxati
+
+Hamma uchunPOST/api/v1/venues/halls/{id}/shifts/Yangi smena qo'shish
+
+Joy egasi
+GET/api/v1/bookings/calendar/hall/{id}/?year=2026&month=8
+To'yxona kalendari (band va bloklangan kunlar)
+
+Hamma uchun
+POST/api/v1/bookings/hall/To'yxona uchun bron yuborish
+
+Avtentifikatsiyadan o'tgan mijoz
+POST/api/v1/bookings/bar/Bar uchun bron yuborish
+
+Avtentifikatsiyadan o'tgan mijoz
+PATCH/api/v1/bookings/hall/{id}/status/Bron statusini o'zgartirish (HOLD, CONFIRMED)Joy egasi

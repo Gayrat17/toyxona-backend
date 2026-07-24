@@ -1,0 +1,17 @@
+[project]
+name = "toyxona"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=5.0",
+    "djangorestframework",
+    "djangorestframework-simplejwt",
+    "djoser",
+    "psycopg2-binary",
+    "celery",
+    "redis",
+    "django-cors-headers",
+    "drf-spectacular",
+    "python-decouple",
+]
