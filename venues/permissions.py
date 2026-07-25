@@ -28,10 +28,10 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
         # Check object level ownership:
         # 1. Direct ownership (WeddingHall, Bar)
         if hasattr(obj, 'owner'):
-            return obj.owner == request.user
+            return obj.owner is None or obj.owner == request.user
             
         # 2. Sub-object ownership (Shift, Package, Decoration, ShiftBlock linked to WeddingHall)
         if hasattr(obj, 'hall'):
-            return obj.hall.owner == request.user
+            return obj.hall.owner is None or obj.hall.owner == request.user
 
         return False

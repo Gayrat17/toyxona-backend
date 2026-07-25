@@ -1,4 +1,6 @@
 from django.urls import path
+from .views import TelegramWebhookView
 
-# URLs moved to telegram_bot app.
-urlpatterns = []
+urlpatterns = [
+    path('webhook/', TelegramWebhookView.as_view(), name='notifications-webhook'),
+]

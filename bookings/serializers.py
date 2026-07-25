@@ -1,18 +1,38 @@
-from rest_framework import serializers
-from django.utils import timezone
-from django.db.models import Q
+from typing import Any, Dict
 from datetime import datetime, timedelta
 from decimal import Decimal
-from venues.models import ShiftBlock
-from .models import HallBooking, BarBooking
 
-class HallBookingSerializer(serializers.ModelSerializer):
+from django.utils import timezone
+from django.db.models import Q, QuerySet
+from rest_framework.exceptions import ValidationError
+from rest_framework.fields import ReadOnlyField
+from rest_framework.serializers import ModelSerializer
+
+from venues.models import ShiftBlock
+from .models import HallBooking, BarBooking, BaseBooking
+
+HOLD_EXPIRATION_HOURS: int = 24
+
+
+def get_active_booking_q_filter() -> Q:
+    """
+    Returns a Q object filtering active bookings (CONFIRMED, PENDING, or unexpired HOLD).
+    """
+    now = timezone.now()
+    return (
+        Q(status__in=[BaseBooking.Status.PENDING, BaseBooking.Status.CONFIRMED]) |
+        Q(status=BaseBooking.Status.HOLD, expires_at__gt=now) |
+        Q(status=BaseBooking.Status.HOLD, expires_at__isnull=True)
+    )
+
+
+class HallBookingSerializer(ModelSerializer):
     """
     Serializer for HallBooking, implementing double-booking checks,
     ShiftBlock checks, and automated pricing.
     """
-    remaining_amount = serializers.ReadOnlyField()
-    user_phone = serializers.ReadOnlyField(source='user.phone_number')
+    remaining_amount = ReadOnlyField()
+    user_phone = ReadOnlyField(source='user.phone_number')
 
     class Meta:
         model = HallBooking
@@ -24,8 +44,7 @@ class HallBookingSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('user', 'total_price', 'expires_at', 'created_at')
 
-    def validate(self, attrs):
-        # Resolve values from input or existing instance (for partial updates)
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         hall = attrs.get('hall') or (self.instance.hall if self.instance else None)
         shift = attrs.get('shift') or (self.instance.shift if self.instance else None)
         package = attrs.get('package') or (self.instance.package if self.instance else None)
@@ -33,41 +52,36 @@ class HallBookingSerializer(serializers.ModelSerializer):
         date = attrs.get('date') or (self.instance.date if self.instance else None)
 
         if not hall or not shift or not date:
-            raise serializers.ValidationError("Zal, smena va sana kiritilishi shart.")
+            raise ValidationError("Zal, smena va sana kiritilishi shart.")
 
         # Ensure all elements belong to the correct WeddingHall
         if shift.hall != hall:
-            raise serializers.ValidationError({"shift": "Tanlangan smena ushbu to'yxonaga tegishli emas."})
+            raise ValidationError({"shift": "Tanlangan smena ushbu to'yxonaga tegishli emas."})
         if package and package.hall != hall:
-            raise serializers.ValidationError({"package": "Tanlangan paket ushbu to'yxonaga tegishli emas."})
+            raise ValidationError({"package": "Tanlangan paket ushbu to'yxonaga tegishli emas."})
         if decoration and decoration.hall != hall:
-            raise serializers.ValidationError({"decoration": "Tanlangan dekoratsiya ushbu to'yxonaga tegishli emas."})
+            raise ValidationError({"decoration": "Tanlangan dekoratsiya ushbu to'yxonaga tegishli emas."})
 
-        # Double-booking protection: checks for CONFIRMED, PENDING, or active HOLDs on same date/shift
-        now = timezone.now()
+        # Double-booking protection
         conflicts = HallBooking.objects.filter(
             hall=hall,
             date=date,
             shift=shift
-        ).filter(
-            Q(status__in=['PENDING', 'CONFIRMED']) |
-            Q(status='HOLD', expires_at__gt=now) |
-            Q(status='HOLD', expires_at__isnull=True)
-        )
+        ).filter(get_active_booking_q_filter())
 
         if self.instance:
             conflicts = conflicts.exclude(id=self.instance.id)
 
         if conflicts.exists():
-            raise serializers.ValidationError("Ushbu sana va smenada faol band qilingan bron mavjud.")
+            raise ValidationError("Ushbu sana va smenada faol band qilingan bron mavjud.")
 
         # ShiftBlock validation: ensure that the date and shift is not blocked by admin
         if ShiftBlock.objects.filter(hall=hall, shift=shift, date=date).exists():
-            raise serializers.ValidationError("Ushbu sana va smena admin tomonidan yopib qo'yilgan (bloklangan).")
+            raise ValidationError("Ushbu sana va smena admin tomonidan yopib qo'yilgan (bloklangan).")
 
         return attrs
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> HallBooking:
         package = validated_data['package']
         decoration = validated_data.get('decoration')
 
@@ -78,13 +92,13 @@ class HallBookingSerializer(serializers.ModelSerializer):
         validated_data['total_price'] = price
 
         # Handle expiration for offline HOLD status
-        status = validated_data.get('status', 'PENDING')
-        if status == 'HOLD':
-            validated_data['expires_at'] = timezone.now() + timedelta(hours=24)
+        status = validated_data.get('status', BaseBooking.Status.PENDING)
+        if status == BaseBooking.Status.HOLD:
+            validated_data['expires_at'] = timezone.now() + timedelta(hours=HOLD_EXPIRATION_HOURS)
 
         return super().create(validated_data)
 
-    def update(self, instance, validated_data):
+    def update(self, instance: HallBooking, validated_data: Dict[str, Any]) -> HallBooking:
         package = validated_data.get('package', instance.package)
         decoration = validated_data.get('decoration', instance.decoration)
 
@@ -96,21 +110,21 @@ class HallBookingSerializer(serializers.ModelSerializer):
 
         # Set or clean expires_at based on status changes
         status = validated_data.get('status', instance.status)
-        if status == 'HOLD' and not instance.expires_at:
-            validated_data['expires_at'] = timezone.now() + timedelta(hours=24)
-        elif status != 'HOLD':
+        if status == BaseBooking.Status.HOLD and not instance.expires_at:
+            validated_data['expires_at'] = timezone.now() + timedelta(hours=HOLD_EXPIRATION_HOURS)
+        elif status != BaseBooking.Status.HOLD:
             validated_data['expires_at'] = None
 
         return super().update(instance, validated_data)
 
 
-class BarBookingSerializer(serializers.ModelSerializer):
+class BarBookingSerializer(ModelSerializer):
     """
     Serializer for BarBooking, implementing time overlap validation,
     and automated hourly slot pricing.
     """
-    remaining_amount = serializers.ReadOnlyField()
-    user_phone = serializers.ReadOnlyField(source='user.phone_number')
+    remaining_amount = ReadOnlyField()
+    user_phone = ReadOnlyField(source='user.phone_number')
 
     class Meta:
         model = BarBooking
@@ -122,41 +136,36 @@ class BarBookingSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('user', 'total_price', 'expires_at', 'created_at')
 
-    def validate(self, attrs):
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         bar = attrs.get('bar') or (self.instance.bar if self.instance else None)
         date = attrs.get('date') or (self.instance.date if self.instance else None)
         start_time = attrs.get('start_time') or (self.instance.start_time if self.instance else None)
         end_time = attrs.get('end_time') or (self.instance.end_time if self.instance else None)
 
         if not bar or not date or not start_time or not end_time:
-            raise serializers.ValidationError("Bar, sana, kirish va chiqish vaqtlari kiritilishi shart.")
+            raise ValidationError("Bar, sana, kirish va chiqish vaqtlari kiritilishi shart.")
 
         # Ensure start_time is before end_time
         if start_time >= end_time:
-            raise serializers.ValidationError({"end_time": "Chiqish vaqti kirish vaqtidan keyin bo'lishi shart."})
+            raise ValidationError({"end_time": "Chiqish vaqti kirish vaqtidan keyin bo'lishi shart."})
 
         # Time overlap validation
-        now = timezone.now()
         conflicts = BarBooking.objects.filter(
             bar=bar,
             date=date,
             start_time__lt=end_time,
             end_time__gt=start_time
-        ).filter(
-            Q(status__in=['PENDING', 'CONFIRMED']) |
-            Q(status='HOLD', expires_at__gt=now) |
-            Q(status='HOLD', expires_at__isnull=True)
-        )
+        ).filter(get_active_booking_q_filter())
 
         if self.instance:
             conflicts = conflicts.exclude(id=self.instance.id)
 
         if conflicts.exists():
-            raise serializers.ValidationError("Ushbu vaqt oralig'i boshqa bron bilan kesishmoqda.")
+            raise ValidationError("Ushbu vaqt oralig'i boshqa bron bilan kesishmoqda.")
 
         return attrs
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> BarBooking:
         bar = validated_data['bar']
         date = validated_data['date']
         start_time = validated_data['start_time']
@@ -172,13 +181,13 @@ class BarBookingSerializer(serializers.ModelSerializer):
         validated_data['total_price'] = duration_hours * bar.price_per_hour
 
         # Handle expiration for offline HOLD status
-        status = validated_data.get('status', 'PENDING')
-        if status == 'HOLD':
-            validated_data['expires_at'] = timezone.now() + timedelta(hours=24)
+        status = validated_data.get('status', BaseBooking.Status.PENDING)
+        if status == BaseBooking.Status.HOLD:
+            validated_data['expires_at'] = timezone.now() + timedelta(hours=HOLD_EXPIRATION_HOURS)
 
         return super().create(validated_data)
 
-    def update(self, instance, validated_data):
+    def update(self, instance: BarBooking, validated_data: Dict[str, Any]) -> BarBooking:
         bar = validated_data.get('bar', instance.bar)
         date = validated_data.get('date', instance.date)
         start_time = validated_data.get('start_time', instance.start_time)
@@ -193,9 +202,10 @@ class BarBookingSerializer(serializers.ModelSerializer):
 
         # Set or clean expires_at based on status changes
         status = validated_data.get('status', instance.status)
-        if status == 'HOLD' and not instance.expires_at:
-            validated_data['expires_at'] = timezone.now() + timedelta(hours=24)
-        elif status != 'HOLD':
+        if status == BaseBooking.Status.HOLD and not instance.expires_at:
+            validated_data['expires_at'] = timezone.now() + timedelta(hours=HOLD_EXPIRATION_HOURS)
+        elif status != BaseBooking.Status.HOLD:
             validated_data['expires_at'] = None
 
         return super().update(instance, validated_data)
+

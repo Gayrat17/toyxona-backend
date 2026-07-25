@@ -1,17 +1,31 @@
 [project]
-name = "toyxona"
+name = "backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multi-tenant e-commerce SaaS platform"
+readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "django>=5.0",
-    "djangorestframework",
-    "djangorestframework-simplejwt",
-    "djoser",
-    "psycopg2-binary",
-    "celery",
-    "redis",
-    "django-cors-headers",
-    "drf-spectacular",
-    "python-decouple",
+    "django>=5.2,<6.0",
+    "django-tenants>=3.8",
+    "djangorestframework>=3.16",
+    "djangorestframework-simplejwt>=5.5",
+    "django-cors-headers>=4.6",
+    "django-filter>=25.1",
+    "psycopg[binary]>=3.2",
+    "redis>=5.2",
+    "django-redis>=5.4",
+    "celery>=5.5",
+    "drf-spectacular>=0.28",
+    "python-decouple>=3.8",
+    "pillow>=11.0",
+    "gunicorn>=23.0",
+    "uvicorn[standard]>=0.32",
+    "whitenoise>=6.8",
+    "adrf>=0.1.9",
+    "django-ckeditor-5>=0.2.20",
+    "celery-types==0.26.0",
+    "cryptography>=44.0",
+    "requests>=2.32",
+    "djoser>=2.3",
+    "psycopg2-binary>=2.9",
 ]

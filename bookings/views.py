@@ -1,14 +1,73 @@
-from rest_framework import viewsets, permissions, status
+from typing import Tuple, Optional, Any, Dict, List
+from rest_framework import permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from rest_framework.viewsets import ModelViewSet
+
+from users.models import User
 from venues.models import ShiftBlock
-from .models import HallBooking, BarBooking
-from .serializers import HallBookingSerializer, BarBookingSerializer
+from .models import HallBooking, BarBooking, BaseBooking
+from .serializers import HallBookingSerializer, BarBookingSerializer, get_active_booking_q_filter
 from .permissions import IsBookingParticipant
+
+
+def _get_role_filtered_booking_queryset(
+    model_cls: Any, 
+    user: Any, 
+    select_related_fields: List[str], 
+    owner_filter_field: str
+) -> QuerySet:
+    """
+    Filters booking queryset depending on user role:
+    - Anonymous: returns none
+    - Admin/Superuser: returns all records
+    - Venue owner: returns bookings belonging to their venues
+    - Client: returns bookings initiated by themselves
+    """
+    if not user or not user.is_authenticated:
+        return model_cls.objects.none()
+
+    qs = model_cls.objects.select_related(*select_related_fields).all()
+
+    if user.is_superuser or getattr(user, 'role', None) == User.Role.ADMIN:
+        return qs
+
+    if getattr(user, 'role', None) == User.Role.VENUE_OWNER:
+        return qs.filter(**{owner_filter_field: user})
+
+    return qs.filter(user=user)
+
+
+def _parse_year_month_params(request: Any) -> Tuple[Optional[int], Optional[int], Optional[Response]]:
+    """
+    Parses and validates year and month query parameters.
+    Returns (year, month, error_response).
+    """
+    year_str = request.query_params.get('year')
+    month_str = request.query_params.get('month')
+
+    if not year_str or not month_str:
+        return None, None, Response(
+            {"error": "year va month query parametrlari kiritilishi shart."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        year = int(year_str)
+        month = int(month_str)
+        if not (1 <= month <= 12):
+            raise ValueError("Month range invalid")
+        return year, month, None
+    except ValueError:
+        return None, None, Response(
+            {"error": "year va month butun son bo'lishi va oy 1-12 oralig'ida bo'lishi shart."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
 
 @extend_schema_view(
     list=extend_schema(summary="To'yxona bronlari ro'yxatini olish (Rollar bo'yicha filtrlanadi)"),
@@ -19,7 +78,7 @@ from .permissions import IsBookingParticipant
     destroy=extend_schema(summary="To'yxona bronini o'chirish/bekor qilish"),
 )
 @extend_schema(tags=["Bookings"])
-class HallBookingViewSet(viewsets.ModelViewSet):
+class HallBookingViewSet(ModelViewSet):
     """
     To'yxonalar uchun bron qilish xizmati. 
     Mijozlar faqat o'z bronlarini ko'ra olishadi, To'yxona egalari esa o'z zallariga tegishli bronlarni ko'radi.
@@ -28,19 +87,14 @@ class HallBookingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsBookingParticipant]
 
     def get_queryset(self):
-        user = self.request.user
-        if not user.is_authenticated:
-            return HallBooking.objects.none()
+        return _get_role_filtered_booking_queryset(
+            model_cls=HallBooking,
+            user=self.request.user,
+            select_related_fields=['user', 'hall', 'shift', 'package', 'decoration'],
+            owner_filter_field='hall__owner'
+        )
 
-        if user.is_superuser or user.role == 'ADMIN':
-            return HallBooking.objects.select_related('user', 'hall', 'shift', 'package', 'decoration').all()
-
-        if user.role == 'VENUE_OWNER':
-            return HallBooking.objects.select_related('user', 'hall', 'shift', 'package', 'decoration').filter(hall__owner=user)
-
-        return HallBooking.objects.select_related('user', 'hall', 'shift', 'package', 'decoration').filter(user=user)
-
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: Any) -> None:
         serializer.save(user=self.request.user)
 
 
@@ -53,7 +107,7 @@ class HallBookingViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Bar bronini o'chirish/bekor qilish"),
 )
 @extend_schema(tags=["Bookings"])
-class BarBookingViewSet(viewsets.ModelViewSet):
+class BarBookingViewSet(ModelViewSet):
     """
     Barlar uchun soatlik bron qilish xizmati.
     """
@@ -61,19 +115,14 @@ class BarBookingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsBookingParticipant]
 
     def get_queryset(self):
-        user = self.request.user
-        if not user.is_authenticated:
-            return BarBooking.objects.none()
+        return _get_role_filtered_booking_queryset(
+            model_cls=BarBooking,
+            user=self.request.user,
+            select_related_fields=['user', 'bar'],
+            owner_filter_field='bar__owner'
+        )
 
-        if user.is_superuser or user.role == 'ADMIN':
-            return BarBooking.objects.select_related('user', 'bar').all()
-
-        if user.role == 'VENUE_OWNER':
-            return BarBooking.objects.select_related('user', 'bar').filter(bar__owner=user)
-
-        return BarBooking.objects.select_related('user', 'bar').filter(user=user)
-
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: Any) -> None:
         serializer.save(user=self.request.user)
 
 
@@ -93,36 +142,16 @@ class HallCalendarView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, hall_id):
-        year = request.query_params.get('year')
-        month = request.query_params.get('month')
+    def get(self, request: Any, hall_id: int) -> Response:
+        year, month, error_response = _parse_year_month_params(request)
+        if error_response:
+            return error_response
 
-        if not year or not month:
-            return Response(
-                {"error": "year va month query parametrlari kiritilishi shart."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            year = int(year)
-            month = int(month)
-        except ValueError:
-            return Response(
-                {"error": "year va month butun son bo'lishi shart."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        now = timezone.now()
-        
         bookings = HallBooking.objects.filter(
             hall_id=hall_id,
             date__year=year,
             date__month=month
-        ).filter(
-            Q(status__in=['PENDING', 'CONFIRMED']) |
-            Q(status='HOLD', expires_at__gt=now) |
-            Q(status='HOLD', expires_at__isnull=True)
-        ).select_related('shift')
+        ).filter(get_active_booking_q_filter()).select_related('shift')
 
         blocks = ShiftBlock.objects.filter(
             hall_id=hall_id,
@@ -130,7 +159,7 @@ class HallCalendarView(APIView):
             date__month=month
         ).select_related('shift')
 
-        busy_shifts = []
+        busy_shifts: List[Dict[str, Any]] = []
 
         for booking in bookings:
             busy_shifts.append({
@@ -176,38 +205,18 @@ class BarCalendarView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, bar_id):
-        year = request.query_params.get('year')
-        month = request.query_params.get('month')
+    def get(self, request: Any, bar_id: int) -> Response:
+        year, month, error_response = _parse_year_month_params(request)
+        if error_response:
+            return error_response
 
-        if not year or not month:
-            return Response(
-                {"error": "year va month query parametrlari kiritilishi shart."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            year = int(year)
-            month = int(month)
-        except ValueError:
-            return Response(
-                {"error": "year va month butun son bo'lishi shart."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        now = timezone.now()
-        
         bookings = BarBooking.objects.filter(
             bar_id=bar_id,
             date__year=year,
             date__month=month
-        ).filter(
-            Q(status__in=['PENDING', 'CONFIRMED']) |
-            Q(status='HOLD', expires_at__gt=now) |
-            Q(status='HOLD', expires_at__isnull=True)
-        )
+        ).filter(get_active_booking_q_filter())
 
-        busy_slots = []
+        busy_slots: List[Dict[str, Any]] = []
 
         for booking in bookings:
             busy_slots.append({
@@ -226,3 +235,4 @@ class BarCalendarView(APIView):
             "month": month,
             "busy_slots": busy_slots
         })
+

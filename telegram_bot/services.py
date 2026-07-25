@@ -133,14 +133,10 @@ def send_telegram_message(chat_id: int, text: str, reply_markup: dict = None) ->
     try:
         response = requests.post(url, json=payload, timeout=10)
         if not response.ok:
-            error_msg = f"[BOT ERROR] Telegram API xatoligi: {response.status_code} - {response.text}"
-            print(error_msg)
-            logger.error(error_msg)
+            logger.error(f"[BOT ERROR] Telegram API xatoligi: {response.status_code} - {response.text}")
         return response.json()
     except Exception as e:
-        error_msg = f"[BOT ERROR] Exception during send_telegram_message: {str(e)}"
-        print(error_msg)
-        logger.exception(error_msg)
+        logger.exception(f"[BOT ERROR] Exception during send_telegram_message: {str(e)}")
         return {"ok": False, "description": str(e)}
 
 
@@ -168,14 +164,10 @@ def edit_telegram_message(chat_id: int, message_id: int, text: str, reply_markup
     try:
         response = requests.post(url, json=payload, timeout=10)
         if not response.ok:
-            error_msg = f"[BOT ERROR] Telegram API xatoligi: {response.status_code} - {response.text}"
-            print(error_msg)
-            logger.error(error_msg)
+            logger.error(f"[BOT ERROR] Telegram API xatoligi: {response.status_code} - {response.text}")
         return response.json()
     except Exception as e:
-        error_msg = f"[BOT ERROR] Exception during edit_telegram_message: {str(e)}"
-        print(error_msg)
-        logger.exception(error_msg)
+        logger.exception(f"[BOT ERROR] Exception during edit_telegram_message: {str(e)}")
         return {"ok": False, "description": str(e)}
 
 
@@ -199,12 +191,9 @@ def answer_callback_query(callback_query_id: str, text: str = None, show_alert: 
     try:
         response = requests.post(url, json=payload, timeout=10)
         if not response.ok:
-            error_msg = f"[BOT ERROR] Telegram API xatoligi: {response.status_code} - {response.text}"
-            print(error_msg)
-            logger.error(error_msg)
+            logger.error(f"[BOT ERROR] Telegram API xatoligi: {response.status_code} - {response.text}")
         return response.json()
     except Exception as e:
-        error_msg = f"[BOT ERROR] Exception during answer_callback_query: {str(e)}"
-        print(error_msg)
-        logger.exception(error_msg)
+        logger.exception(f"[BOT ERROR] Exception during answer_callback_query: {str(e)}")
         return {"ok": False, "description": str(e)}
+

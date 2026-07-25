@@ -1,5 +1,8 @@
-from rest_framework import viewsets
+from typing import Any
+from adrf.viewsets import ModelViewSet
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from users.models import User
 from .models import WeddingHall, Bar, Shift, Package, Decoration, ShiftBlock
 from .serializers import (
     WeddingHallSerializer,
@@ -11,8 +14,48 @@ from .serializers import (
 )
 from .permissions import IsOwnerOrReadOnly
 
+
+def _is_truthy_query_param(value: Any) -> bool:
+    """Helper to check if query parameter string represents truthy value."""
+    if not value:
+        return False
+    return str(value).strip().lower() in {'true', '1', 'yes'}
+
+
+class BaseVenueViewSet(ModelViewSet):
+    """
+    Base ViewSet for venue models (WeddingHall, Bar).
+    Provides queryset filtering by ownership (`my_venues=true`) and standard perform_create/update logic.
+    """
+    permission_classes = [IsOwnerOrReadOnly]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        my_venues = self.request.query_params.get('my_venues')
+
+        if _is_truthy_query_param(my_venues):
+            user = self.request.user
+            if user and user.is_authenticated:
+                if user.is_superuser or getattr(user, 'role', None) == User.Role.ADMIN:
+                    return queryset
+                return queryset.filter(owner=user)
+            return queryset.none()
+
+        return queryset
+
+    def perform_create(self, serializer: Any) -> None:
+        serializer.save(owner=self.request.user)
+
+    def perform_update(self, serializer: Any) -> None:
+        if getattr(serializer.instance, 'owner', None) is None:
+            serializer.save(owner=self.request.user)
+        else:
+            serializer.save()
+
+
 @extend_schema_view(
-    list=extend_schema(summary="Barcha to'yxonalar ro'yxatini olish"),
+    list=extend_schema(summary="Barcha to'yxonalar ro'yxatini olish (my_venues=true bo'lsa faqat o'zinikini)"),
     retrieve=extend_schema(summary="To'yxona tafsilotlarini olish"),
     create=extend_schema(summary="Yangi to'yxona qo'shish (Faqat Joy egalari)"),
     update=extend_schema(summary="To'yxona ma'lumotlarini to'liq yangilash"),
@@ -20,21 +63,18 @@ from .permissions import IsOwnerOrReadOnly
     destroy=extend_schema(summary="To'yxonani o'chirish"),
 )
 @extend_schema(tags=["Wedding Halls"])
-class WeddingHallViewSet(viewsets.ModelViewSet):
+class WeddingHallViewSet(BaseVenueViewSet):
     """
     To'yxonalar boshqaruvi uchun API. 
-    Joy egalari o'z zallarini boshqarishlari mumkin, mijozlar uchun esa faqat ko'rish imkoniyati mavjud.
+    Joy egalari o'z zallarini boshqarishlari mumkin.
+    `my_venues=true` parametri uzatilganda faqat joriy foydalanuvchiga tegishli to'yxonalar qaytariladi.
     """
-    queryset = WeddingHall.objects.select_related('owner').all()
+    queryset = WeddingHall.objects.select_related('owner').prefetch_related('gallery_images').all()
     serializer_class = WeddingHallSerializer
-    permission_classes = [IsOwnerOrReadOnly]
-
-    def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
 
 
 @extend_schema_view(
-    list=extend_schema(summary="Barcha barlar ro'yxatini olish"),
+    list=extend_schema(summary="Barcha barlar ro'yxatini olish (my_venues=true bo'lsa faqat o'zinikini)"),
     retrieve=extend_schema(summary="Bar tafsilotlarini olish"),
     create=extend_schema(summary="Yangi bar qo'shish (Faqat Joy egalari)"),
     update=extend_schema(summary="Bar ma'lumotlarini to'liq yangilash"),
@@ -42,16 +82,13 @@ class WeddingHallViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Barni o'chirish"),
 )
 @extend_schema(tags=["Bars"])
-class BarViewSet(viewsets.ModelViewSet):
+class BarViewSet(BaseVenueViewSet):
     """
     Soatbay ijaraga beriladigan barlar boshqaruvi uchun API.
+    `my_venues=true` parametri uzatilganda faqat joriy foydalanuvchiga tegishli barlar qaytariladi.
     """
-    queryset = Bar.objects.select_related('owner').all()
+    queryset = Bar.objects.select_related('owner').prefetch_related('gallery_images').all()
     serializer_class = BarSerializer
-    permission_classes = [IsOwnerOrReadOnly]
-
-    def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
 
 
 @extend_schema_view(
@@ -63,7 +100,7 @@ class BarViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Smenani o'chirish"),
 )
 @extend_schema(tags=["Halls - Shifts"])
-class ShiftViewSet(viewsets.ModelViewSet):
+class ShiftViewSet(ModelViewSet):
     """
     To'yxona smenalari (Tushlik, Kechki va h.k.) boshqaruvi uchun API.
     """
@@ -81,7 +118,7 @@ class ShiftViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Paketni o'chirish"),
 )
 @extend_schema(tags=["Halls - Packages"])
-class PackageViewSet(viewsets.ModelViewSet):
+class PackageViewSet(ModelViewSet):
     """
     Mehmon soniga qarab belgilangan to'yxona paketlari boshqaruvi uchun API.
     """
@@ -99,7 +136,7 @@ class PackageViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Dekoratsiyani o'chirish"),
 )
 @extend_schema(tags=["Halls - Decorations"])
-class DecorationViewSet(viewsets.ModelViewSet):
+class DecorationViewSet(ModelViewSet):
     """
     To'yxonani bezatish (dekoratsiya) variantlari va ularning qo'shimcha narxlari uchun API.
     """
@@ -117,7 +154,7 @@ class DecorationViewSet(viewsets.ModelViewSet):
     destroy=extend_schema(summary="Blokirovkani bekor qilish (ochish)"),
 )
 @extend_schema(tags=["Halls - Blocks"])
-class ShiftBlockViewSet(viewsets.ModelViewSet):
+class ShiftBlockViewSet(ModelViewSet):
     """
     Admin (To'yxona egasi) tomonidan ma'lum kunlardagi smenalarni bron qilishdan yopib qo'yish (HOLD/Block) uchun API.
     """

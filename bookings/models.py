@@ -1,60 +1,67 @@
-from django.db import models
-from django.conf import settings
+from decimal import Decimal
+from django.db.models import (
+    CASCADE, ForeignKey, TimeField, PositiveIntegerField, SET_NULL, DecimalField, DateField,
+    BooleanField, CharField, DateTimeField, TextField, Model, TextChoices
+)
+
 from venues.models import WeddingHall, Bar, Shift, Package, Decoration
 
-class BaseBooking(models.Model):
+
+class BaseBooking(Model):
     """
     Abstract booking model containing common fields for both halls and bars.
     """
-    STATUS_CHOICES = (
-        ('HOLD', 'Muzlatilgan (Hold)'),
-        ('PENDING', 'Kutilmoqda (Pending)'),
-        ('CONFIRMED', 'Tasdiqlangan (Confirmed)'),
-        ('REJECTED', 'Rad etilgan (Rejected)'),
-        ('CANCELLED', 'Bekor qilingan (Cancelled)'),
-    )
+    class Status(TextChoices):
+        HOLD = "HOLD", "Hold"
+        PENDING = "PENDING", "Pending"
+        CONFIRMED = "CONFIRMED", "Confirmed"
+        REJECTED = "REJECTED", "Rejected"
+        CANCELLED = "CANCELLED", "Cancelled"
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='%(class)s_bookings')
-    date = models.DateField()
-    total_price = models.DecimalField(max_digits=12, decimal_places=2)
-    deposit_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    is_deposit_paid = models.BooleanField(default=False)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
-    expires_at = models.DateTimeField(null=True, blank=True)  # Used for HOLD status expiration
-    meeting_date = models.DateTimeField(null=True, blank=True)  # Offline negotiation date
-    admin_notes = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    user = ForeignKey("users.User", CASCADE, related_name='%(class)s_bookings')
+    date = DateField()
+    total_price = DecimalField(max_digits=12, decimal_places=2)
+    deposit_amount = DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    is_deposit_paid = BooleanField(default=False)
+    status = CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    expires_at = DateTimeField(null=True, blank=True)  # Used for HOLD status expiration
+    meeting_date = DateTimeField(null=True, blank=True)  # Offline negotiation date
+    admin_notes = TextField(null=True, blank=True)
+    created_at = DateTimeField(auto_now_add=True)
 
     class Meta:
         abstract = True
 
     @property
-    def remaining_amount(self):
+    def remaining_amount(self) -> Decimal:
         """
         Calculates the remaining unpaid amount.
         """
         return self.total_price - self.deposit_amount
 
+
 class HallBooking(BaseBooking):
     """
     Booking representation for Wedding Halls, including shifts, packages, and decorations.
     """
-    hall = models.ForeignKey(WeddingHall, on_delete=models.CASCADE, related_name='hall_bookings')
-    shift = models.ForeignKey(Shift, on_delete=models.CASCADE, related_name='hall_bookings')
-    package = models.ForeignKey(Package, on_delete=models.CASCADE, related_name='hall_bookings')
-    decoration = models.ForeignKey(Decoration, on_delete=models.SET_NULL, null=True, blank=True, related_name='hall_bookings')
+    hall = ForeignKey(WeddingHall, CASCADE, related_name='hall_bookings')
+    shift = ForeignKey(Shift, CASCADE, related_name='hall_bookings')
+    package = ForeignKey(Package, CASCADE, related_name='hall_bookings')
+    decoration = ForeignKey(Decoration, SET_NULL, null=True, blank=True, related_name='hall_bookings')
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Hall: {self.hall.name} - Date: {self.date} - User: {self.user.phone_number}"
+
 
 class BarBooking(BaseBooking):
     """
     Booking representation for Bars, containing hourly slots.
     """
-    bar = models.ForeignKey(Bar, on_delete=models.CASCADE, related_name='bar_bookings')
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    guest_count = models.PositiveIntegerField(null=True, blank=True)
+    bar = ForeignKey(Bar, CASCADE, related_name='bar_bookings')
+    start_time = TimeField()
+    end_time = TimeField()
+    guest_count = PositiveIntegerField(null=True, blank=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Bar: {self.bar.name} - Date: {self.date} - Slot: {self.start_time}-{self.end_time}"
+
