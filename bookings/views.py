@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Q, QuerySet
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from rest_framework.viewsets import ModelViewSet
+from django.shortcuts import get_object_or_404
 
 from users.models import User
 from venues.models import ShiftBlock
@@ -69,21 +69,11 @@ def _parse_year_month_params(request: Any) -> Tuple[Optional[int], Optional[int]
         )
 
 
-@extend_schema_view(
-    list=extend_schema(summary="To'yxona bronlari ro'yxatini olish (Rollar bo'yicha filtrlanadi)"),
-    retrieve=extend_schema(summary="To'yxona broni tafsilotlarini olish"),
-    create=extend_schema(summary="To'yxona uchun yangi bron so'rovi yuborish (Avtomat narxlanadi)"),
-    update=extend_schema(summary="To'yxona broni ma'lumotlarini to'liq yangilash"),
-    partial_update=extend_schema(summary="To'yxona broni ma'lumotlarini qisman yangilash"),
-    destroy=extend_schema(summary="To'yxona bronini o'chirish/bekor qilish"),
-)
-@extend_schema(tags=["Bookings"])
-class HallBookingViewSet(ModelViewSet):
+class HallBookingListCreateAPIView(APIView):
     """
     To'yxonalar uchun bron qilish xizmati. 
     Mijozlar faqat o'z bronlarini ko'ra olishadi, To'yxona egalari esa o'z zallariga tegishli bronlarni ko'radi.
     """
-    serializer_class = HallBookingSerializer
     permission_classes = [IsBookingParticipant]
 
     def get_queryset(self):
@@ -94,24 +84,72 @@ class HallBookingViewSet(ModelViewSet):
             owner_filter_field='hall__owner'
         )
 
-    def perform_create(self, serializer: Any) -> None:
-        serializer.save(user=self.request.user)
+    @extend_schema(tags=["Bookings"], summary="To'yxona bronlari ro'yxatini olish (Rollar bo'yicha filtrlanadi)", responses=HallBookingSerializer(many=True))
+    def get(self, request: Any) -> Response:
+        qs = self.get_queryset()
+        serializer = HallBookingSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="To'yxona uchun yangi bron so'rovi yuborish (Avtomat narxlanadi)", request=HallBookingSerializer, responses=HallBookingSerializer)
+    def post(self, request: Any) -> Response:
+        serializer = HallBookingSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema_view(
-    list=extend_schema(summary="Bar bronlari ro'yxatini olish (Rollar bo'yicha filtrlanadi)"),
-    retrieve=extend_schema(summary="Bar broni tafsilotlarini olish"),
-    create=extend_schema(summary="Bar uchun yangi bron so'rovi yuborish (Avtomat narxlanadi)"),
-    update=extend_schema(summary="Bar broni ma'lumotlarini to'liq yangilash"),
-    partial_update=extend_schema(summary="Bar broni ma'lumotlarini qisman yangilash"),
-    destroy=extend_schema(summary="Bar bronini o'chirish/bekor qilish"),
-)
-@extend_schema(tags=["Bookings"])
-class BarBookingViewSet(ModelViewSet):
+class HallBookingDetailAPIView(APIView):
+    """
+    To'yxonalar uchun bron tafsilotlari.
+    """
+    permission_classes = [IsBookingParticipant]
+
+    def get_queryset(self):
+        return _get_role_filtered_booking_queryset(
+            model_cls=HallBooking,
+            user=self.request.user,
+            select_related_fields=['user', 'hall', 'shift', 'package', 'decoration'],
+            owner_filter_field='hall__owner'
+        )
+
+    def get_object(self, pk: int):
+        obj = get_object_or_404(self.get_queryset(), pk=pk)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    @extend_schema(tags=["Bookings"], summary="To'yxona broni tafsilotlarini olish", responses=HallBookingSerializer)
+    def get(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        serializer = HallBookingSerializer(obj, context={'request': request})
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="To'yxona broni ma'lumotlarini to'liq yangilash", request=HallBookingSerializer, responses=HallBookingSerializer)
+    def put(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        serializer = HallBookingSerializer(obj, data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="To'yxona broni ma'lumotlarini qisman yangilash", request=HallBookingSerializer, responses=HallBookingSerializer)
+    def patch(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        serializer = HallBookingSerializer(obj, data=request.data, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="To'yxona bronini o'chirish/bekor qilish")
+    def delete(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class BarBookingListCreateAPIView(APIView):
     """
     Barlar uchun soatlik bron qilish xizmati.
     """
-    serializer_class = BarBookingSerializer
     permission_classes = [IsBookingParticipant]
 
     def get_queryset(self):
@@ -122,8 +160,66 @@ class BarBookingViewSet(ModelViewSet):
             owner_filter_field='bar__owner'
         )
 
-    def perform_create(self, serializer: Any) -> None:
-        serializer.save(user=self.request.user)
+    @extend_schema(tags=["Bookings"], summary="Bar bronlari ro'yxatini olish (Rollar bo'yicha filtrlanadi)", responses=BarBookingSerializer(many=True))
+    def get(self, request: Any) -> Response:
+        qs = self.get_queryset()
+        serializer = BarBookingSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="Bar uchun yangi bron so'rovi yuborish (Avtomat narxlanadi)", request=BarBookingSerializer, responses=BarBookingSerializer)
+    def post(self, request: Any) -> Response:
+        serializer = BarBookingSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class BarBookingDetailAPIView(APIView):
+    """
+    Barlar uchun bron tafsilotlari.
+    """
+    permission_classes = [IsBookingParticipant]
+
+    def get_queryset(self):
+        return _get_role_filtered_booking_queryset(
+            model_cls=BarBooking,
+            user=self.request.user,
+            select_related_fields=['user', 'bar'],
+            owner_filter_field='bar__owner'
+        )
+
+    def get_object(self, pk: int):
+        obj = get_object_or_404(self.get_queryset(), pk=pk)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    @extend_schema(tags=["Bookings"], summary="Bar broni tafsilotlarini olish", responses=BarBookingSerializer)
+    def get(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        serializer = BarBookingSerializer(obj, context={'request': request})
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="Bar broni ma'lumotlarini to'liq yangilash", request=BarBookingSerializer, responses=BarBookingSerializer)
+    def put(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        serializer = BarBookingSerializer(obj, data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="Bar broni ma'lumotlarini qisman yangilash", request=BarBookingSerializer, responses=BarBookingSerializer)
+    def patch(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        serializer = BarBookingSerializer(obj, data=request.data, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @extend_schema(tags=["Bookings"], summary="Bar bronini o'chirish/bekor qilish")
+    def delete(self, request: Any, pk: int) -> Response:
+        obj = self.get_object(pk)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(
@@ -235,4 +331,3 @@ class BarCalendarView(APIView):
             "month": month,
             "busy_slots": busy_slots
         })
-
