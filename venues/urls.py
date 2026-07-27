@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
+    RegionViewSet,
+    DistrictViewSet,
     WeddingHallViewSet,
     BarViewSet,
     ShiftViewSet,
@@ -11,6 +13,8 @@ from .views import (
 
 # Using DefaultRouter to register API endpoints
 router = DefaultRouter()
+router.register('regions', RegionViewSet, basename='region')
+router.register('districts', DistrictViewSet, basename='district')
 router.register('halls', WeddingHallViewSet, basename='hall')
 router.register('bars', BarViewSet, basename='bar')
 router.register('shifts', ShiftViewSet, basename='shift')

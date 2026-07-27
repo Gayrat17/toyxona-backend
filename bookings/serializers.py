@@ -56,11 +56,11 @@ class HallBookingSerializer(ModelSerializer):
 
         # Ensure all elements belong to the correct WeddingHall
         if shift.hall != hall:
-            raise ValidationError({"shift": "Tanlangan smena ushbu to'yxonaga tegishli emas."})
+            raise ValidationError({"shift": "Tanlangan smena ushbu restoranga tegishli emas."})
         if package and package.hall != hall:
-            raise ValidationError({"package": "Tanlangan paket ushbu to'yxonaga tegishli emas."})
+            raise ValidationError({"package": "Tanlangan paket ushbu restoranga tegishli emas."})
         if decoration and decoration.hall != hall:
-            raise ValidationError({"decoration": "Tanlangan dekoratsiya ushbu to'yxonaga tegishli emas."})
+            raise ValidationError({"decoration": "Tanlangan dekoratsiya ushbu restoranga tegishli emas."})
 
         # Double-booking protection
         conflicts = HallBooking.objects.filter(

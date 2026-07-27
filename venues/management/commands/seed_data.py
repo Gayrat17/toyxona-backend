@@ -3,13 +3,13 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import time, date, timedelta
 from decimal import Decimal
-from venues.models import WeddingHall, Bar, Shift, Package, Decoration, ShiftBlock
+from venues.models import Region, District, WeddingHall, Bar, Shift, Package, Decoration, ShiftBlock
 from bookings.models import HallBooking, BarBooking
 
 User = get_user_model()
 
 class Command(BaseCommand):
-    help = "Seeds database with initial test data for Toyxona & Bar Booking system"
+    help = "Seeds database with initial test data for Restoran & Bar Booking system"
 
     def handle(self, *args, **options):
         self.stdout.write("Seeding data...")
@@ -24,9 +24,34 @@ class Command(BaseCommand):
         Shift.objects.all().delete()
         WeddingHall.objects.all().delete()
         Bar.objects.all().delete()
+        District.objects.all().delete()
+        Region.objects.all().delete()
         User.objects.all().delete()
 
-        # 2. Create Users
+        # 2. Seed Regions & Districts of Uzbekistan
+        self.stdout.write("Seeding Uzbekistan Regions & Districts...")
+        UZ_REGIONS_DATA = {
+            "Toshkent shahri": ["Yunusobod", "Chilonzor", "Mirzo Ulug'bek", "Yakkasaroy", "Mirobod", "Shayxontohur", "Olmazor", "Sergeli", "Yashnobod"],
+            "Toshkent viloyati": ["Keles", "Chirchiq", "Olmaliq", "Angren", "Yangiyo'l", "Qibray", "Zangiota"],
+            "Samarqand": ["Samarqand sh.", "Pastdarg'om", "Jomboy", "Toyloq", "Kattaqo'rg'on"],
+            "Buxoro": ["Buxoro sh.", "G'ijduvon", "Kogon", "Romitsh"],
+            "Farg'ona": ["Farg'ona sh.", "Marg'ilon", "Qo'qon", "Oltiariq"],
+            "Namangan": ["Namangan sh.", "Chust", "Pop", "Kosonsoy"],
+            "Andijon": ["Andijon sh.", "Asaka", "Shahrixon", "Xo'jaobod"],
+        }
+
+        created_districts = {}
+        for reg_order, (reg_name, dist_list) in enumerate(UZ_REGIONS_DATA.items(), start=1):
+            region_obj = Region.objects.create(name=reg_name, order=reg_order)
+            for dist_order, dist_name in enumerate(dist_list, start=1):
+                dist_obj = District.objects.create(region=region_obj, name=dist_name, order=dist_order)
+                created_districts[f"{reg_name}-{dist_name}"] = dist_obj
+
+        toshkent_sh = Region.objects.get(name="Toshkent shahri")
+        chilonzor_dist = created_districts.get("Toshkent shahri-Chilonzor")
+        yunusobod_dist = created_districts.get("Toshkent shahri-Yunusobod")
+
+        # 3. Create Users
         self.stdout.write("Creating users...")
         # Superadmin
         admin = User.objects.create_superuser(phone_number="+998901234567", password="1")
@@ -65,10 +90,12 @@ class Command(BaseCommand):
         client1.last_name = "Aliyev"
         client1.save()
 
-        # 3. Create Wedding Hall
+        # 4. Create Wedding Hall
         self.stdout.write("Creating wedding hall...")
         hall = WeddingHall.objects.create(
             owner=owner1,
+            region=toshkent_sh,
+            district=chilonzor_dist,
             name="Yulduz To'yxonasi",
             address="Toshkent sh., Chilonzor tumani, 9-kvartal",
             description="300-500 kishilik hashamatli to'y zali. Barcha qulayliklar va zamonaviy akustika tizimi mavjud.",
@@ -76,7 +103,7 @@ class Command(BaseCommand):
             required_deposit=Decimal("5000000.00")
         )
 
-        # 4. Create Shifts for Wedding Hall
+        # 5. Create Shifts for Wedding Hall
         self.stdout.write("Creating shifts...")
         shift_lunch = Shift.objects.create(
             hall=hall, 
@@ -91,7 +118,7 @@ class Command(BaseCommand):
             end_time=time(23, 0)
         )
 
-        # 5. Create Packages for Wedding Hall
+        # 6. Create Packages for Wedding Hall
         self.stdout.write("Creating packages...")
         pkg300 = Package.objects.create(
             hall=hall, 
@@ -106,7 +133,7 @@ class Command(BaseCommand):
             description="400 kishilik lyuks to'y paketi (pre-cooked salatlar, premium menyu)."
         )
 
-        # 6. Create Decoration
+        # 7. Create Decoration
         self.stdout.write("Creating decorations...")
         dec_gold = Decoration.objects.create(
             hall=hall, 
@@ -114,10 +141,12 @@ class Command(BaseCommand):
             additional_price=Decimal("5000000.00")
         )
 
-        # 7. Create Bar
+        # 8. Create Bar
         self.stdout.write("Creating bar...")
         bar = Bar.objects.create(
             owner=owner2,
+            region=toshkent_sh,
+            district=yunusobod_dist,
             name="Retro Bar & Lounge",
             address="Toshkent sh., Yunusobod tumani, Amir Temur ko'chasi",
             description="Kuyov navkar va do'stlar yig'ilishi uchun soatlik ijaraga beriladigan shinam bar.",
@@ -126,7 +155,7 @@ class Command(BaseCommand):
             required_deposit=Decimal("1000000.00")
         )
 
-        # 8. Create Bookings
+        # 9. Create Bookings
         self.stdout.write("Creating test bookings...")
         # Confirmed Hall Booking (10 days from now)
         hb = HallBooking.objects.create(
@@ -155,4 +184,4 @@ class Command(BaseCommand):
             status="PENDING"
         )
 
-        self.stdout.write(self.style.SUCCESS("Database successfully seeded with test data!"))
+        self.stdout.write(self.style.SUCCESS("Database successfully seeded with test data including Regions & Districts!"))

@@ -7,7 +7,7 @@ class TelegramBotConfig(models.Model):
     """
     bot_token = models.CharField(max_length=255, blank=True, null=True)
     bot_username = models.CharField(max_length=100, blank=True, null=True)
-    bot_name = models.CharField(max_length=100, default="To'yxona Admin Bot")
+    bot_name = models.CharField(max_length=100, default="Restoran Admin Bot")
     short_description = models.CharField(max_length=120, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     webhook_url = models.URLField(blank=True, null=True)

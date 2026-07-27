@@ -4,10 +4,30 @@ from typing import Any, Dict, Optional
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from users.models import User as CustomUser
-from .models import WeddingHall, Bar, Media, Shift, Package, Decoration, ShiftBlock
+from .models import Region, District, WeddingHall, Bar, Media, Shift, Package, Decoration, ShiftBlock
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+class DistrictSerializer(serializers.ModelSerializer):
+    """
+    Serializer for District (Tuman).
+    """
+    class Meta:
+        model = District
+        fields = ('id', 'region', 'name', 'order')
+
+
+class RegionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Region (Viloyat), including nested districts.
+    """
+    districts = DistrictSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Region
+        fields = ('id', 'name', 'order', 'districts')
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -43,6 +63,8 @@ class BaseVenueSerializer(serializers.ModelSerializer):
     - Gallery media upload/deletion
     """
     owner_phone = serializers.ReadOnlyField(source='owner.phone_number')
+    region_name = serializers.ReadOnlyField(source='region.name')
+    district_name = serializers.ReadOnlyField(source='district.name')
     cover_image_url = serializers.SerializerMethodField()
     gallery_images = MediaSerializer(many=True, read_only=True)
 
@@ -118,32 +140,34 @@ class BaseVenueSerializer(serializers.ModelSerializer):
 
 class WeddingHallSerializer(BaseVenueSerializer):
     """
-    Serializer for WeddingHall including cover image, video link, map link, amenities, and gallery media.
+    Serializer for WeddingHall including region, district, cover image, video link, map link, amenities, and gallery media.
     """
     venue_fk_field = 'hall'
 
     class Meta:
         model = WeddingHall
         fields = (
-            'id', 'owner', 'owner_phone', 'name', 'address', 'description', 
-            'max_capacity', 'required_deposit', 'cover_image', 'cover_image_url',
-            'video_url', 'map_link', 'amenities', 'gallery_images', 'created_at'
+            'id', 'owner', 'owner_phone', 'region', 'region_name', 'district', 'district_name',
+            'name', 'address', 'description', 'max_capacity', 'required_deposit', 
+            'cover_image', 'cover_image_url', 'video_url', 'map_link', 'amenities', 
+            'gallery_images', 'created_at'
         )
         read_only_fields = ('owner', 'created_at')
 
 
 class BarSerializer(BaseVenueSerializer):
     """
-    Serializer for Bar including cover image, video link, map link, amenities, and gallery media.
+    Serializer for Bar including region, district, cover image, video link, map link, amenities, and gallery media.
     """
     venue_fk_field = 'bar'
 
     class Meta:
         model = Bar
         fields = (
-            'id', 'owner', 'owner_phone', 'name', 'address', 'description', 
-            'capacity', 'price_per_hour', 'required_deposit', 'cover_image', 
-            'cover_image_url', 'video_url', 'map_link', 'amenities', 'gallery_images', 'created_at'
+            'id', 'owner', 'owner_phone', 'region', 'region_name', 'district', 'district_name',
+            'name', 'address', 'description', 'capacity', 'price_per_hour', 
+            'required_deposit', 'cover_image', 'cover_image_url', 'video_url', 
+            'map_link', 'amenities', 'gallery_images', 'created_at'
         )
         read_only_fields = ('owner', 'created_at')
 
@@ -155,7 +179,7 @@ def _validate_hall_ownership(serializer: serializers.ModelSerializer, value: Wed
         if request.user.is_superuser or getattr(request.user, 'role', None) == CustomUser.Role.ADMIN:
             return value
         if value.owner != request.user:
-            raise serializers.ValidationError("Siz faqat o'zingizga tegishli to'yxona uchun ruxsat berilgan resurslarni o'zgartirishingiz mumkin.")
+            raise serializers.ValidationError("Siz faqat o'zingizga tegishli restoran uchun ruxsat berilgan resurslarni o'zgartirishingiz mumkin.")
     return value
 
 
@@ -211,10 +235,9 @@ class ShiftBlockSerializer(serializers.ModelSerializer):
         if request and request.user:
             if not (request.user.is_superuser or getattr(request.user, 'role', None) == CustomUser.Role.ADMIN):
                 if hall and hall.owner != request.user:
-                    raise serializers.ValidationError({"hall": "Siz faqat o'zingizga tegishli to'yxonani bloklay olasiz."})
+                    raise serializers.ValidationError({"hall": "Siz faqat o'zingizga tegishli restoranni bloklay olasiz."})
 
         if shift and hall and shift.hall != hall:
-            raise serializers.ValidationError({"shift": "Tanlangan smena ushbu to'yxonaga tegishli emas."})
+            raise serializers.ValidationError({"shift": "Tanlangan smena ushbu restoranga tegishli emas."})
 
         return attrs
-

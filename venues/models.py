@@ -1,12 +1,45 @@
 from django.conf import settings
 from django.db.models import (
     Model, ForeignKey, CharField, TextField, ImageField, URLField, 
-    DateTimeField, JSONField, PositiveIntegerField, CASCADE, DecimalField, 
+    DateTimeField, JSONField, PositiveIntegerField, CASCADE, SET_NULL, DecimalField, 
     BooleanField, FileField, DateField, TimeField
 )
 
 from venues.utils import convert_image_field_to_webp
 
+
+class Region(Model):
+    """
+    Model representing regions (Viloyatlar).
+    """
+    name = CharField(max_length=100, unique=True)
+    order = PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name = "Viloyat"
+        verbose_name_plural = "Viloyatlar"
+
+    def __str__(self):
+        return self.name
+
+
+class District(Model):
+    """
+    Model representing districts (Tumanlar) within a region.
+    """
+    region = ForeignKey(Region, on_delete=CASCADE, related_name='districts')
+    name = CharField(max_length=100)
+    order = PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'name']
+        unique_together = ('region', 'name')
+        verbose_name = "Tuman"
+        verbose_name_plural = "Tumanlar"
+
+    def __str__(self):
+        return f"{self.region.name} - {self.name}"
 
 
 class WeddingHall(Model):
@@ -14,6 +47,8 @@ class WeddingHall(Model):
     Model representing wedding halls, rented by shift with custom packages and decorations.
     """
     owner = ForeignKey("users.User", on_delete=CASCADE, related_name='wedding_halls')
+    region = ForeignKey(Region, on_delete=SET_NULL, null=True, blank=True, related_name='wedding_halls')
+    district = ForeignKey(District, on_delete=SET_NULL, null=True, blank=True, related_name='wedding_halls')
     name = CharField(max_length=255)
     address = CharField(max_length=255)
     description = TextField()
@@ -34,6 +69,8 @@ class Bar(Model):
     Model representing bars, rented by the hour.
     """
     owner = ForeignKey(settings.AUTH_USER_MODEL, on_delete=CASCADE, related_name='bars')
+    region = ForeignKey(Region, on_delete=SET_NULL, null=True, blank=True, related_name='bars')
+    district = ForeignKey(District, on_delete=SET_NULL, null=True, blank=True, related_name='bars')
     name = CharField(max_length=255)
     address = CharField(max_length=255)
     description = TextField()

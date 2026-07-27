@@ -1,5 +1,5 @@
 """
-URL configuration for Toyxona & Bar Booking system.
+URL configuration for Restoran & Bar Booking system.
 """
 
 from django.contrib import admin

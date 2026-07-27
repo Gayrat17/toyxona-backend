@@ -1,5 +1,5 @@
 """
-Django settings for Toyxona & Bar Booking system.
+Django settings for Restoran & Bar Booking system.
 Generated using django-admin and customized for SaaS / Marketplace API.
 """
 import os.path
@@ -179,7 +179,7 @@ CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:
 
 # --- DRF Spectacular Settings (Swagger/OpenAPI docs) ---
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Toyxona va Bar Bron qilish Tizimi API',
+    'TITLE': 'Restoran va Bar Bron qilish Tizimi API',
     'DESCRIPTION': 'Wedding Hall and Bar Booking SaaS / Marketplace API',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
