@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import (
+from bookings.views import (
     HallBookingListCreateAPIView,
     HallBookingDetailAPIView,
     BarBookingListCreateAPIView,
