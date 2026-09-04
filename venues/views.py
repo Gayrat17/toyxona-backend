@@ -57,7 +57,16 @@ def _apply_venue_filters(queryset, request, model_class):
     region_param = params.get('region')
     if region_param:
         if str(region_param).isdigit():
-            queryset = queryset.filter(region_id=int(region_param))
+            region_obj = Region.objects.filter(id=int(region_param)).first()
+            if region_obj:
+                clean_name = region_obj.name.replace(" viloyati", "").replace(" shahri", "").strip()
+                queryset = queryset.filter(
+                    Q(region_id=int(region_param)) | 
+                    Q(address__icontains=region_obj.name) |
+                    Q(address__icontains=clean_name)
+                )
+            else:
+                queryset = queryset.filter(region_id=int(region_param))
         else:
             queryset = queryset.filter(
                 Q(region__name__icontains=region_param) | Q(address__icontains=region_param)
@@ -67,7 +76,16 @@ def _apply_venue_filters(queryset, request, model_class):
     district_param = params.get('district')
     if district_param:
         if str(district_param).isdigit():
-            queryset = queryset.filter(district_id=int(district_param))
+            district_obj = District.objects.filter(id=int(district_param)).first()
+            if district_obj:
+                clean_dist_name = district_obj.name.replace(" tumani", "").replace(" shahri", "").replace(" sh.", "").strip()
+                queryset = queryset.filter(
+                    Q(district_id=int(district_param)) | 
+                    Q(address__icontains=district_obj.name) |
+                    Q(address__icontains=clean_dist_name)
+                )
+            else:
+                queryset = queryset.filter(district_id=int(district_param))
         else:
             queryset = queryset.filter(
                 Q(district__name__icontains=district_param) | Q(address__icontains=district_param)
