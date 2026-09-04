@@ -9,6 +9,7 @@ from venues.views import (
     BarListCreateAPIView,
     BarDetailAPIView,
     ShiftListCreateAPIView,
+    HallShiftListCreateAPIView,
     ShiftDetailAPIView,
     PackageListCreateAPIView,
     PackageDetailAPIView,
@@ -37,6 +38,7 @@ urlpatterns = [
 
     # Shifts
     path('shifts/', ShiftListCreateAPIView.as_view(), name='shift-list'),
+    path('halls/<int:hall_id>/shifts/', HallShiftListCreateAPIView.as_view(), name='hall-shift-list'),
     path('shifts/<int:pk>/', ShiftDetailAPIView.as_view(), name='shift-detail'),
 
     # Packages

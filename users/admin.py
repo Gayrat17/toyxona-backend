@@ -10,7 +10,7 @@ class CustomUserAdmin(UserAdmin):
     model = User
     
     # Fields to display in the user list view
-    list_display = ('phone_number', 'first_name', 'last_name', 'role', 'is_verified', 'is_staff', 'is_active')
+    list_display = ('phone_number', 'first_name', 'last_name', 'role', 'is_verified', 'telegram_chat_id', 'is_staff', 'is_active')
     
     # Filters available in the sidebar
     list_filter = ('role', 'is_verified', 'is_staff', 'is_active')
@@ -25,7 +25,7 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('phone_number', 'password')}),
         ('Shaxsiy ma\'lumotlar (Personal Info)', {'fields': ('first_name', 'last_name', 'email')}),
-        ('Rollar va Status (Roles & Verification)', {'fields': ('role', 'is_verified')}),
+        ('Rollar va Status (Roles & Verification)', {'fields': ('role', 'is_verified', 'telegram_chat_id')}),
         ('Huquqlar (Permissions)', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
         }),
@@ -36,6 +36,6 @@ class CustomUserAdmin(UserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('phone_number', 'password', 'first_name', 'last_name', 'email', 'role', 'is_verified'),
+            'fields': ('phone_number', 'password', 'first_name', 'last_name', 'email', 'role', 'is_verified', 'telegram_chat_id'),
         }),
     )

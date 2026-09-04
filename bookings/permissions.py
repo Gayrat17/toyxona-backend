@@ -1,29 +1,45 @@
 from rest_framework import permissions
 
+
 class IsBookingParticipant(permissions.BasePermission):
-    """
-    Custom permission to ensure only:
-    1. The client who made the booking,
-    2. The owner of the booked venue,
-    3. Platform admins,
-    can view or modify the specific booking record.
-    """
+    """Allow access to a booking only to its client, venue owner, or admin."""
+
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated
+        return bool(request.user and request.user.is_authenticated)
 
     def has_object_permission(self, request, view, obj):
-        # Admins or superusers bypass participant checks
-        if request.user.is_superuser or request.user.role == 'ADMIN':
+        user = request.user
+        if user.is_superuser or getattr(user, "role", None) == "ADMIN":
             return True
 
-        # Check client ownership
-        if obj.user == request.user:
+        if obj.user_id == user.id:
             return True
 
-        # Check venue owner ownership
-        if hasattr(obj, 'hall'):
-            return obj.hall.owner == request.user
-        elif hasattr(obj, 'bar'):
-            return obj.bar.owner == request.user
+        venue = getattr(obj, "hall", None) or getattr(obj, "bar", None)
+        return bool(venue and venue.owner_id == user.id and getattr(user, "role", None) == "VENUE_OWNER")
 
-        return False
+
+class IsBookingManager(IsBookingParticipant):
+    """Restrict status management to venue owners and platform admins."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and (
+                user.is_superuser
+                or getattr(user, "role", None) in {"ADMIN", "VENUE_OWNER"}
+            )
+        )
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if user.is_superuser or getattr(user, "role", None) == "ADMIN":
+            return True
+        venue = getattr(obj, "hall", None) or getattr(obj, "bar", None)
+        return bool(
+            venue
+            and venue.owner_id == user.id
+            and getattr(user, "role", None) == "VENUE_OWNER"
+        )

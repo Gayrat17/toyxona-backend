@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import AllowAny, IsAdminUser, SAFE_METHODS
+from rest_framework.permissions import AllowAny, SAFE_METHODS
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
@@ -21,7 +21,7 @@ from .serializers import (
     DecorationSerializer,
     ShiftBlockSerializer,
 )
-from .permissions import IsOwnerOrReadOnly
+from .permissions import IsOwnerOrReadOnly, IsPlatformAdmin
 
 
 # =====================================================================
@@ -120,13 +120,14 @@ class RegionListCreateAPIView(APIView):
     GET  — Barcha viloyatlar ro'yxatini olish (tumanlar bilan birga).
     POST — Yangi viloyat qo'shish (Faqat Admin).
     """
+    serializer_class = RegionSerializer
 
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [AllowAny()]
-        return [IsAdminUser()]
+        return [IsPlatformAdmin()]
 
-    @extend_schema(summary="Barcha viloyatlar ro'yxatini olish")
+    @extend_schema(operation_id="region_list", summary="Barcha viloyatlar ro'yxatini olish")
     def get(self, request):
         regions = Region.objects.prefetch_related('districts').all()
         serializer = RegionSerializer(regions, many=True, context={'request': request})
@@ -148,18 +149,19 @@ class RegionDetailAPIView(APIView):
     PATCH  — Viloyat ma'lumotlarini qisman yangilash.
     DELETE — Viloyatni o'chirish.
     """
+    serializer_class = RegionSerializer
 
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [AllowAny()]
-        return [IsAdminUser()]
+        return [IsPlatformAdmin()]
 
     def get_object(self, pk):
         obj = get_object_or_404(Region.objects.prefetch_related('districts'), pk=pk)
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Viloyat tafsilotlarini olish")
+    @extend_schema(operation_id="region_detail", summary="Viloyat tafsilotlarini olish")
     def get(self, request, pk):
         region = self.get_object(pk)
         serializer = RegionSerializer(region, context={'request': request})
@@ -198,13 +200,14 @@ class DistrictListCreateAPIView(APIView):
     GET  — Barcha tumanlar ro'yxati (?region=<id> filter mavjud).
     POST — Yangi tuman qo'shish (Faqat Admin).
     """
+    serializer_class = DistrictSerializer
 
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [AllowAny()]
-        return [IsAdminUser()]
+        return [IsPlatformAdmin()]
 
-    @extend_schema(summary="Barcha tumanlar ro'yxatini olish (region bo'yicha filter)")
+    @extend_schema(operation_id="district_list", summary="Barcha tumanlar ro'yxatini olish (region bo'yicha filter)")
     def get(self, request):
         queryset = District.objects.select_related('region').all()
         region_id = request.query_params.get('region')
@@ -229,18 +232,19 @@ class DistrictDetailAPIView(APIView):
     PATCH  — Tuman ma'lumotlarini qisman yangilash.
     DELETE — Tumanni o'chirish.
     """
+    serializer_class = DistrictSerializer
 
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [AllowAny()]
-        return [IsAdminUser()]
+        return [IsPlatformAdmin()]
 
     def get_object(self, pk):
         obj = get_object_or_404(District.objects.select_related('region'), pk=pk)
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Tuman tafsilotlarini olish")
+    @extend_schema(operation_id="district_detail", summary="Tuman tafsilotlarini olish")
     def get(self, request, pk):
         district = self.get_object(pk)
         serializer = DistrictSerializer(district, context={'request': request})
@@ -279,10 +283,11 @@ class WeddingHallListCreateAPIView(APIView):
     GET  — Barcha to'yxonalar ro'yxati (my_venues, region, district, search, min_capacity filtrlari).
     POST — Yangi to'yxona qo'shish (Faqat Joy egalari).
     """
+    serializer_class = WeddingHallSerializer
     permission_classes = [IsOwnerOrReadOnly]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
-    @extend_schema(summary="Barcha to'yxonalar ro'yxatini olish (my_venues=true bo'lsa faqat o'zinikini)")
+    @extend_schema(operation_id="wedding_hall_list", summary="Barcha to'yxonalar ro'yxatini olish (my_venues=true bo'lsa faqat o'zinikini)")
     def get(self, request):
         queryset = WeddingHall.objects.select_related(
             'owner', 'region', 'district'
@@ -307,6 +312,7 @@ class WeddingHallDetailAPIView(APIView):
     PATCH  — To'yxona ma'lumotlarini qisman yangilash.
     DELETE — To'yxonani o'chirish.
     """
+    serializer_class = WeddingHallSerializer
     permission_classes = [IsOwnerOrReadOnly]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
@@ -318,7 +324,7 @@ class WeddingHallDetailAPIView(APIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="To'yxona tafsilotlarini olish")
+    @extend_schema(operation_id="wedding_hall_detail", summary="To'yxona tafsilotlarini olish")
     def get(self, request, pk):
         hall = self.get_object(pk)
         serializer = WeddingHallSerializer(hall, context={'request': request})
@@ -363,10 +369,11 @@ class BarListCreateAPIView(APIView):
     GET  — Barcha barlar ro'yxati (my_venues, region, district, search, min_capacity filtrlari).
     POST — Yangi bar qo'shish (Faqat Joy egalari).
     """
+    serializer_class = BarSerializer
     permission_classes = [IsOwnerOrReadOnly]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
-    @extend_schema(summary="Barcha barlar ro'yxatini olish (my_venues=true bo'lsa faqat o'zinikini)")
+    @extend_schema(operation_id="bar_list", summary="Barcha barlar ro'yxatini olish (my_venues=true bo'lsa faqat o'zinikini)")
     def get(self, request):
         queryset = Bar.objects.select_related(
             'owner', 'region', 'district'
@@ -391,6 +398,7 @@ class BarDetailAPIView(APIView):
     PATCH  — Bar ma'lumotlarini qisman yangilash.
     DELETE — Barni o'chirish.
     """
+    serializer_class = BarSerializer
     permission_classes = [IsOwnerOrReadOnly]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
@@ -402,7 +410,7 @@ class BarDetailAPIView(APIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Bar tafsilotlarini olish")
+    @extend_schema(operation_id="bar_detail", summary="Bar tafsilotlarini olish")
     def get(self, request, pk):
         bar = self.get_object(pk)
         serializer = BarSerializer(bar, context={'request': request})
@@ -447,9 +455,10 @@ class ShiftListCreateAPIView(APIView):
     GET  — Smenalar ro'yxati (?hall=<id> filter mavjud).
     POST — Yangi smena qo'shish.
     """
+    serializer_class = ShiftSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
-    @extend_schema(summary="Smenalar ro'yxatini olish (hall bo'yicha filter)")
+    @extend_schema(operation_id="shift_list", summary="Smenalar ro'yxatini olish (hall bo'yicha filter)")
     def get(self, request):
         queryset = Shift.objects.all()
         hall_id = request.query_params.get('hall')
@@ -467,6 +476,28 @@ class ShiftListCreateAPIView(APIView):
 
 
 @extend_schema(tags=["Shifts"])
+class HallShiftListCreateAPIView(ShiftListCreateAPIView):
+    """Compatibility route for ``/halls/<hall_id>/shifts/``."""
+
+    @extend_schema(operation_id="hall_shift_list", summary="Zal smenalalari ro'yxati")
+    def get(self, request, hall_id):
+        get_object_or_404(WeddingHall.objects.only("id"), pk=hall_id)
+        queryset = Shift.objects.filter(hall_id=hall_id)
+        serializer = ShiftSerializer(queryset, many=True, context={"request": request})
+        return Response(serializer.data)
+
+    @extend_schema(operation_id="hall_shift_create", summary="Zalga yangi smena qo'shish")
+    def post(self, request, hall_id):
+        get_object_or_404(WeddingHall.objects.only("id"), pk=hall_id)
+        data = request.data.copy()
+        data["hall"] = hall_id
+        serializer = ShiftSerializer(data=data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Shifts"])
 class ShiftDetailAPIView(APIView):
     """
     GET    — Smena tafsilotlarini olish.
@@ -474,6 +505,7 @@ class ShiftDetailAPIView(APIView):
     PATCH  — Smena ma'lumotlarini qisman yangilash.
     DELETE — Smenani o'chirish.
     """
+    serializer_class = ShiftSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
     def get_object(self, pk):
@@ -481,7 +513,7 @@ class ShiftDetailAPIView(APIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Smena tafsilotlarini olish")
+    @extend_schema(operation_id="shift_detail", summary="Smena tafsilotlarini olish")
     def get(self, request, pk):
         shift = self.get_object(pk)
         serializer = ShiftSerializer(shift, context={'request': request})
@@ -520,9 +552,10 @@ class PackageListCreateAPIView(APIView):
     GET  — Paketlar ro'yxati (?hall=<id> filter mavjud).
     POST — Yangi paket qo'shish.
     """
+    serializer_class = PackageSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
-    @extend_schema(summary="Paketlar ro'yxatini olish (hall bo'yicha filter)")
+    @extend_schema(operation_id="package_list", summary="Paketlar ro'yxatini olish (hall bo'yicha filter)")
     def get(self, request):
         queryset = Package.objects.all()
         hall_id = request.query_params.get('hall')
@@ -547,6 +580,7 @@ class PackageDetailAPIView(APIView):
     PATCH  — Paket ma'lumotlarini qisman yangilash.
     DELETE — Paketni o'chirish.
     """
+    serializer_class = PackageSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
     def get_object(self, pk):
@@ -554,7 +588,7 @@ class PackageDetailAPIView(APIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Paket tafsilotlarini olish")
+    @extend_schema(operation_id="package_detail", summary="Paket tafsilotlarini olish")
     def get(self, request, pk):
         package = self.get_object(pk)
         serializer = PackageSerializer(package, context={'request': request})
@@ -593,9 +627,10 @@ class DecorationListCreateAPIView(APIView):
     GET  — Dekoratsiyalar ro'yxati (?hall=<id> filter mavjud).
     POST — Yangi dekoratsiya qo'shish.
     """
+    serializer_class = DecorationSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
-    @extend_schema(summary="Dekoratsiyalar ro'yxatini olish (hall bo'yicha filter)")
+    @extend_schema(operation_id="decoration_list", summary="Dekoratsiyalar ro'yxatini olish (hall bo'yicha filter)")
     def get(self, request):
         queryset = Decoration.objects.all()
         hall_id = request.query_params.get('hall')
@@ -620,6 +655,7 @@ class DecorationDetailAPIView(APIView):
     PATCH  — Dekoratsiya ma'lumotlarini qisman yangilash.
     DELETE — Dekoratsiyani o'chirish.
     """
+    serializer_class = DecorationSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
     def get_object(self, pk):
@@ -627,7 +663,7 @@ class DecorationDetailAPIView(APIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Dekoratsiya tafsilotlarini olish")
+    @extend_schema(operation_id="decoration_detail", summary="Dekoratsiya tafsilotlarini olish")
     def get(self, request, pk):
         decoration = self.get_object(pk)
         serializer = DecorationSerializer(decoration, context={'request': request})
@@ -666,9 +702,10 @@ class ShiftBlockListCreateAPIView(APIView):
     GET  — Bloklangan smenalar ro'yxati (?hall=<id> filter mavjud).
     POST — Yangi smena bloki qo'shish.
     """
+    serializer_class = ShiftBlockSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
-    @extend_schema(summary="Bloklangan smenalar ro'yxatini olish (hall bo'yicha filter)")
+    @extend_schema(operation_id="shift_block_list", summary="Bloklangan smenalar ro'yxatini olish (hall bo'yicha filter)")
     def get(self, request):
         queryset = ShiftBlock.objects.all()
         hall_id = request.query_params.get('hall')
@@ -693,6 +730,7 @@ class ShiftBlockDetailAPIView(APIView):
     PATCH  — Smena bloki ma'lumotlarini qisman yangilash.
     DELETE — Smena blokini o'chirish.
     """
+    serializer_class = ShiftBlockSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
     def get_object(self, pk):
@@ -700,7 +738,7 @@ class ShiftBlockDetailAPIView(APIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    @extend_schema(summary="Smena bloki tafsilotlarini olish")
+    @extend_schema(operation_id="shift_block_detail", summary="Smena bloki tafsilotlarini olish")
     def get(self, request, pk):
         block = self.get_object(pk)
         serializer = ShiftBlockSerializer(block, context={'request': request})

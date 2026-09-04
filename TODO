@@ -1,4 +1,5 @@
-telegramda avval contactingiz ni yuboring deb so'radi men yubordim  uning javobi: ✅ Hisobingiz muvaffaqiyatli ulandi! Endi bron xabarlarini shu yerda qabul qilasiz.
+# Backend holati
 
-webhook uchun URL yaratish
-npx localtunnel --port 8000
+- Telegram bot webhook: `python manage.py set_webhook --url https://example.com`
+- Productionda Redis/Celery worker va beat jarayonlarini ishga tushirish.
+- `.env.example` asosida secret, database, CORS/CSRF va Telegram qiymatlarini sozlash.

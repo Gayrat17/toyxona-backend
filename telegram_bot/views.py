@@ -1,77 +1,105 @@
 import logging
-import re
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework import status, serializers
-from django.db.models import Q
+
 from django.contrib.auth import get_user_model
-from bookings.models import HallBooking, BarBooking
+from rest_framework import serializers, status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from telegram_bot.models import TelegramBotConfig
 from telegram_bot.permissions import IsPlatformAdmin
-from telegram_bot.services import send_telegram_message, edit_telegram_message, answer_callback_query, configure_telegram_bot
+from telegram_bot.services import (
+    answer_callback_query,
+    configure_telegram_bot,
+    edit_telegram_message,
+    send_telegram_message,
+)
+from notifications.views import TelegramWebhookView, find_user_by_phone
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
-from notifications.views import TelegramWebhookView, find_user_by_phone
 
 
 class TelegramBotConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = TelegramBotConfig
         fields = (
-            'bot_token',
-            'bot_username',
-            'bot_name',
-            'short_description',
-            'description',
-            'webhook_url',
-            'is_active',
-            'updated_at'
+            "bot_token",
+            "bot_username",
+            "bot_name",
+            "short_description",
+            "description",
+            "webhook_url",
+            "is_active",
+            "updated_at",
         )
-        read_only_fields = ('bot_username', 'is_active', 'updated_at')
+        read_only_fields = ("bot_username", "is_active", "updated_at")
 
     def to_representation(self, instance):
-        ret = super().to_representation(instance)
-        token = ret.get('bot_token')
-        if token and len(token) > 10:
-            ret['bot_token'] = f"{token[:6]}...{token[-4:]}"
-        return ret
+        representation = super().to_representation(instance)
+        token = representation.get("bot_token")
+        if token:
+            representation["bot_token"] = (
+                f"{token[:6]}...{token[-4:]}" if len(token) > 10 else "****"
+            )
+        return representation
 
 
 class TelegramBotConfigView(APIView):
-    """
-    Superadmin view to retrieve and configure Telegram Bot settings.
-    """
+    """Read and update the platform Telegram bot configuration."""
+
+    serializer_class = TelegramBotConfigSerializer
     permission_classes = [IsAuthenticated, IsPlatformAdmin]
 
     def get(self, request, *args, **kwargs):
-        config_inst = TelegramBotConfig.load()
-        serializer = TelegramBotConfigSerializer(config_inst)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        config_instance = TelegramBotConfig.load()
+        serializer = TelegramBotConfigSerializer(config_instance, context={"request": request})
+        return Response(serializer.data)
 
     def patch(self, request, *args, **kwargs):
-        config_inst = TelegramBotConfig.load()
-        serializer = TelegramBotConfigSerializer(config_inst, data=request.data, partial=True)
-        if serializer.is_valid():
-            token_input = serializer.validated_data.get('bot_token')
-            if token_input and ('...' in token_input or '*' in token_input):
-                serializer.validated_data['bot_token'] = config_inst.bot_token
+        config_instance = TelegramBotConfig.load()
+        serializer = TelegramBotConfigSerializer(
+            config_instance,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        token_input = serializer.validated_data.get("bot_token")
+        if token_input and ("..." in token_input or "*" in token_input):
+            # The UI sends the masked value returned by GET when only metadata
+            # was edited.  Never persist that mask as the real bot token.
+            serializer.validated_data["bot_token"] = config_instance.bot_token
 
-            instance = serializer.save()
+        instance = serializer.save()
+        try:
+            configure_telegram_bot(instance)
+        except (ValueError, OSError) as exc:
+            logger.warning("Telegram bot configuration failed: %s", exc)
+            instance.refresh_from_db()
+            return Response(
+                {
+                    "message": f"Telegram Bot sozlanishida xatolik: {exc}",
+                    "config": TelegramBotConfigSerializer(instance).data,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception:
+            logger.exception("Unexpected Telegram bot configuration failure")
+            instance.refresh_from_db()
+            return Response(
+                {
+                    "message": "Telegram Bot sozlanishida kutilmagan xatolik yuz berdi.",
+                    "config": TelegramBotConfigSerializer(instance).data,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-            try:
-                configure_telegram_bot(instance)
-                instance.refresh_from_db()
-                return Response({
-                    "message": "Bot tokeni qabul qilindi, nomi o'zgartirildi va Webhook muvaffaqiyatli ulandi!",
-                    "config": TelegramBotConfigSerializer(instance).data
-                }, status=status.HTTP_200_OK)
-            except Exception as e:
-                logger.error(f"Failed to configure Telegram Bot: {e}")
-                return Response({
-                    "message": f"Telegram Bot sozlanishida xatolik: {str(e)}",
-                    "config": TelegramBotConfigSerializer(instance).data
-                }, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        instance.refresh_from_db()
+        return Response(
+            {
+                "message": "Telegram Bot muvaffaqiyatli sozlandi.",
+                "config": TelegramBotConfigSerializer(instance).data,
+            },
+            status=status.HTTP_200_OK,
+        )

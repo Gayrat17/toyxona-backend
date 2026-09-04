@@ -1,75 +1,91 @@
-# 🏛️ To'yxona & Bar Booking API
+# To'yxona va Bar Booking API
 
-O'zbekiston bozoriga moslashtirilgan to'yxonalar (smenali tizim) va barlarni (soatlik ijaraga berish) bron qilish va boshqarish uchun mo'ljallangan backend platforma.
+O'zbekiston bozoriga moslashtirilgan to'yxonalar (smena bo'yicha) va barlarni
+(soatlik) bron qilish hamda boshqarish uchun Django REST API.
 
-## 🚀 Loyiha haqida
-Ushbu API mijozlarga o'ziga mos to'y zali yoki kuyov navkar barini topish, paket va dekoratsiya tanlash hamda real vaqt rejimida bo'sh sanalarni ko'rib bron yuborish imkonini beradi. 
+## Texnologiyalar
 
-Joy egalari uchun esa xonalar va smenalarni moslashuvchan boshqarish, sanalarni muzlatib turish (`HOLD` rejimi) va Telegram bot orqali yangi bronlar haqida tezkor xabar olish imkoniyati mavjud.
+- Python 3.11+
+- Django 5.2 va Django REST Framework
+- PostgreSQL (local development uchun SQLite fallback)
+- SimpleJWT + Djoser orqali telefon raqamli autentifikatsiya
+- Celery + Redis orqali bron va Telegram bildirishnomalari
+- drf-spectacular orqali OpenAPI/Swagger
+- WhiteNoise orqali production static fayllar
 
-## 🛠 Texnologiyalar
-* **Python 3.10+**
-* **Django 5.0+** & **Django REST Framework (DRF)**
-* **PostgreSQL** — Asosiy relatsion ma'lumotlar bazasi
-* **Celery & Redis** — Asinxron fon vazifalari (HOLD muddatini nazorat qilish va Telegram botga xabar yuborish)
-* **SimpleJWT / Djoser** — Token asosida avtentifikatsiya
-* **OpenAPI / Swagger (drf-spectacular)** — API hujjatlashtirish
+## Ishga tushirish
 
-## 📁 Loyiha strukturasi
-```text
-config/             # Asosiy sozlamalar (settings, urls, celery)
-├── users/          # Foydalanuvchi rollari va avtentifikatsiya
-├── venues/         # Joylar (Hall, Bar, Shift, Package, Decoration)
-├── bookings/       # Bronlash logikasi va kalendar algoritmlari
-└── notifications/  # Telegram bot va SMS integratsiyalari
-
-⚙️ O'rnatish yo'riqnomasi (Local setup)
-Gid-repozitoriydan nusxa oling:
-
-Bash
-git clone [https://github.com/username/toyxona-booking-api.git](https://github.com/username/toyxona-booking-api.git)
-cd toyxona-booking-api
-Virtual muhit (venv) yarating va aktivlashtiring:
-
-Bash
-python3 -m venv venv
-source venv/bin/activate  # Windows uchun: venv\Scripts\activate
-Kutubxonalarni o'rnating:
-
-Bash
-pip install -r requirements.txt
-Atrof-muhit o'zgaruvchilarini sozlang:
-.env.example faylidan nusxa olib, yangi .env fayl yarating va PostgreSQL hamda Telegram Bot ma'lumotlarini kiritib chiqing:
-
-Bash
+```bash
 cp .env.example .env
-Ma'lumotlar bazasi migratsiyalarini bajaring:
-
-Bash
-python manage.py makemigrations
+python -m venv .venv
+source .venv/bin/activate                 # Windows: .venv\\Scripts\\activate
+pip install -e .
 python manage.py migrate
-Superuser (Admin) yarating:
-
-Bash
-python manage.py createsuperuser
-Loyiha serverini ishga tushiring:
-
-Bash
+python manage.py seed_data                 # ixtiyoriy demo ma'lumotlar
 python manage.py runserver
-API Hujjatlar (Swagger UI): http://127.0.0.1:8000/api/docs/
+```
 
-Django Admin Panel: http://127.0.0.1:8000/admin/
+`USE_SQLITE=True` local uchun yetarli. Productionda `DEBUG=False`,
+`USE_SQLITE=False`, PostgreSQL, kuchli `SECRET_KEY`, `ALLOWED_HOSTS`, CORS/CSRF
+originlari va Redis qiymatlarini albatta sozlang. Deploymentdan oldin static
+fayllarni yig'ing:
 
-🔑 Asosiy xususiyatlar (Key Features)
-Ikki xil model obyekti: WeddingHall (Smena va Paketlar bo'yicha) va Bar (Soatlik tarifikatsiya bo'yicha).
+```bash
+python manage.py collectstatic --noinput
+```
 
-Double-booking proteksiyasi: Serializer darajasida sanalar kesishuvini va ustma-ust tushishni avtomat to'sadi.
+Swagger: <http://127.0.0.1:8000/api/docs/>
+Schema: <http://127.0.0.1:8000/api/schema/>
+Health check: <http://127.0.0.1:8000/health/>
 
-HOLD mexanizmi: Restoran adminlari kelishuv jarayonida sanalarni 24-48 soatga muzlatib qo'ya oladi.
+## Fon jarayonlari
 
-Yagona Kalendar API: Frontend taqvim chizishi uchun barcha band va bloklangan smenalarni bir so'rovda qaytaradigan optimallashtirilgan endpoint.
+Bron egasiga Telegram xabari faqat database transaction muvaffaqiyatli commit
+bo'lgandan keyin Celery queue'ga yuboriladi. Worker va scheduler:
 
+```bash
+celery -A config worker -l info
+celery -A config beat -l info
+```
 
----
+Har soatda muddati o'tgan `HOLD` bronlar `CANCELLED` qilinadi. Telegram botni
+admin API orqali yoki command orqali ulash mumkin:
 
-Loyiha uchun to'liq arxitektura va texnik hujjat tayyorlandi. Navbatda loyihani papkalarga ajratib, birinchi navbatda `venues` app modellarini yozishni boshlaymizmi yoki Telegram bot integratsiyasi mexanizmini ko'rib chiqamizmi?
+```bash
+python manage.py set_webhook --url https://example.com
+# bekor qilish:
+python manage.py set_webhook --delete
+```
+
+Telegram webhook URL to'liq ko'rsatilmasa, command uni
+`/api/v1/bot/webhook/` bilan to'ldiradi. `TELEGRAM_WEBHOOK_SECRET` sozlansa,
+webhook requestlarida Telegram secret header ham tekshiriladi.
+
+## API yo'nalishlari
+
+- `POST /api/v1/auth/users/` — client yoki venue owner ro'yxatdan o'tishi
+- `POST /api/v1/auth/jwt/create/` — JWT olish
+- `GET /api/v1/venues/halls/` va `/bars/` — public qidiruv va filterlar
+- `GET /api/v1/bookings/calendar/hall/<id>/` — `year` va `month` bilan kalendar
+- `GET /api/v1/bookings/calendar/bar/<id>/` — band soatlar
+- `POST /api/v1/bookings/hall/` yoki `/bar/` — yangi `PENDING` bron
+- `PATCH /api/v1/bookings/hall/<id>/status/` yoki `/bar/<id>/status/` — owner/admin status boshqaruvi
+- `/api/v1/bot/webhook/` — Telegram webhook
+- `/api/v1/bot/admin/bot-config/` — faqat platform admini uchun bot sozlamalari
+
+Hall booking narxi paket va dekoratsiyadan, bar booking narxi esa vaqt oralig'i
+va `price_per_hour` dan server tomonda hisoblanadi. Mijoz narxni yoki `user`
+maydonini o'zgartira olmaydi. `HOLD`, `PENDING` va `CONFIRMED` bronlar
+availability hisobida faol; `REJECTED` va `CANCELLED` bo'sh slot hisoblanadi.
+
+## Sifat tekshiruvi
+
+```bash
+python manage.py check
+python manage.py makemigrations --check --dry-run
+python manage.py test
+```
+
+Bron yaratish va status o'zgarishlarida venue qatori lock qilinadi, shuning uchun
+bir vaqtdagi so'rovlar double-bookingga olib kelmaydi. Katta ro'yxatlar uchun
+venue va booking availability/filter indexlari qo'shilgan.

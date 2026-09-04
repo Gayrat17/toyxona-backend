@@ -1,6 +1,6 @@
 version = 1
 revision = 3
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 
 [[package]]
 name = "adrf"
@@ -91,6 +91,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg2-binary" },
     { name = "python-decouple" },
+    { name = "python-dotenv" },
     { name = "redis" },
     { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
@@ -118,6 +119,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "python-decouple", specifier = ">=3.8" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "redis", specifier = ">=5.2" },
     { name = "requests", specifier = ">=2.32" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },

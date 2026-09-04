@@ -3,9 +3,9 @@
 .env.local
 *.env
 
-# Django Migrations
-**/migrations/*.py
-!**/migrations/__init__.py
+# Django generated media and local database are ignored; migrations are committed.
+# Packaging artifacts
+*.egg-info/
 
 # Requirements
 requirements.txt

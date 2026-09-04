@@ -11,8 +11,12 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from users.views import PhoneTokenObtainPairView
+from .views import health_check
 
 urlpatterns = [
+    path("health/", health_check, name="health-check"),
+
     # Admin Panel
     path('admin/', admin.site.urls),
 
@@ -22,6 +26,7 @@ urlpatterns = [
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
     # Authentication & User Management (Djoser & SimpleJWT)
+    path("api/v1/auth/jwt/create/", PhoneTokenObtainPairView.as_view(), name="jwt-create"),
     path('api/v1/auth/', include('djoser.urls')),
     path('api/v1/auth/', include('djoser.urls.jwt')),
 
