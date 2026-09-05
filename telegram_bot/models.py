@@ -1,17 +1,18 @@
 from django.db import IntegrityError, models
+from django.db.models import Model, CharField, TextField, URLField, BooleanField, DateTimeField
 
 
-class TelegramBotConfig(models.Model):
+class TelegramBotConfig(Model):
     """Singleton configuration for the platform Telegram bot."""
 
-    bot_token = models.CharField(max_length=255, blank=True, null=True)
-    bot_username = models.CharField(max_length=100, blank=True, null=True)
-    bot_name = models.CharField(max_length=100, default="To'yxona Admin Bot")
-    short_description = models.CharField(max_length=120, blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
-    webhook_url = models.URLField(blank=True, null=True)
-    is_active = models.BooleanField(default=False)
-    updated_at = models.DateTimeField(auto_now=True)
+    bot_token = CharField(max_length=255, blank=True, null=True)
+    bot_username = CharField(max_length=100, blank=True, null=True)
+    bot_name = CharField(max_length=100, default="To'yxona Admin Bot")
+    short_description = CharField(max_length=120, blank=True, null=True)
+    description = TextField(blank=True, null=True)
+    webhook_url = URLField(blank=True, null=True)
+    is_active = BooleanField(default=False)
+    updated_at = DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "Telegram Bot Config"
