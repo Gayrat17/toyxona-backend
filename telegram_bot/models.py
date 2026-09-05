@@ -1,4 +1,4 @@
-from django.db import IntegrityError, models
+from django.db import IntegrityError
 from django.db.models import Model, CharField, TextField, URLField, BooleanField, DateTimeField
 
 
