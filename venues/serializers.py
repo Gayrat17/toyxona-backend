@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 
-from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from rest_framework.fields import SerializerMethodField, ReadOnlyField
+from rest_framework.serializers import ModelSerializer
 
 from users.models import User as CustomUser
 from .models import (
@@ -18,13 +20,13 @@ from .models import (
     WeddingHall,
 )
 
-class DistrictSerializer(serializers.ModelSerializer):
+class DistrictSerializer(ModelSerializer):
     class Meta:
         model = District
         fields = ("id", "region", "name", "order")
 
 
-class RegionSerializer(serializers.ModelSerializer):
+class RegionSerializer(ModelSerializer):
     districts = DistrictSerializer(many=True, read_only=True)
 
     class Meta:
@@ -32,10 +34,10 @@ class RegionSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "order", "districts")
 
 
-class MediaSerializer(serializers.ModelSerializer):
+class MediaSerializer(ModelSerializer):
     """Read-only gallery representation with an absolute URL when possible."""
 
-    image_url = serializers.SerializerMethodField()
+    image_url = SerializerMethodField()
 
     class Meta:
         model = Media
@@ -63,13 +65,13 @@ class MediaSerializer(serializers.ModelSerializer):
 VenueImageSerializer = MediaSerializer
 
 
-class BaseVenueSerializer(serializers.ModelSerializer):
+class BaseVenueSerializer(ModelSerializer):
     """Shared venue representation and multipart gallery handling."""
 
-    owner_phone = serializers.ReadOnlyField(source="owner.phone_number")
-    region_name = serializers.ReadOnlyField(source="region.name")
-    district_name = serializers.ReadOnlyField(source="district.name")
-    cover_image_url = serializers.SerializerMethodField()
+    owner_phone = ReadOnlyField(source="owner.phone_number")
+    region_name = ReadOnlyField(source="region.name")
+    district_name = ReadOnlyField(source="district.name")
+    cover_image_url = SerializerMethodField()
     gallery_images = MediaSerializer(many=True, read_only=True)
     venue_fk_field = "hall"
 
@@ -87,7 +89,7 @@ class BaseVenueSerializer(serializers.ModelSerializer):
             try:
                 mutable_data["amenities"] = json.loads(data["amenities"])
             except json.JSONDecodeError as exc:
-                raise serializers.ValidationError(
+                raise ValidationError(
                     {"amenities": "Amenities valid JSON formatida bo'lishi kerak."}
                 ) from exc
         return super().to_internal_value(mutable_data)
@@ -96,12 +98,12 @@ class BaseVenueSerializer(serializers.ModelSerializer):
         region = attrs.get("region", getattr(self.instance, "region", None))
         district = attrs.get("district", getattr(self.instance, "district", None))
         if region and district and district.region_id != region.id:
-            raise serializers.ValidationError(
+            raise ValidationError(
                 {"district": "Tuman tanlangan viloyatga tegishli emas."}
             )
         amenities = attrs.get("amenities", getattr(self.instance, "amenities", []))
         if amenities is not None and not isinstance(amenities, list):
-            raise serializers.ValidationError(
+            raise ValidationError(
                 {"amenities": "Amenities ro'yxat ko'rinishida bo'lishi kerak."}
             )
         return attrs
@@ -126,7 +128,7 @@ class BaseVenueSerializer(serializers.ModelSerializer):
             ids = json.loads(raw_ids) if isinstance(raw_ids, str) else raw_ids
             ids = [int(item) for item in ids] if isinstance(ids, list) else []
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise serializers.ValidationError(
+            raise ValidationError(
                 {"deleted_gallery_ids": "Galereya IDlari ro'yxat bo'lishi kerak."}
             ) from exc
         if ids:
@@ -223,20 +225,20 @@ class BarSerializer(BaseVenueSerializer):
         read_only_fields = ("id", "owner", "created_at", "cover_image_url", "gallery_images", "owner_phone", "region_name", "district_name")
 
 
-def _validate_hall_ownership(serializer: serializers.ModelSerializer, value: WeddingHall) -> WeddingHall:
+def _validate_hall_ownership(serializer: ModelSerializer, value: WeddingHall) -> WeddingHall:
     request = serializer.context.get("request")
     user = getattr(request, "user", None)
     if user and user.is_authenticated and not user.is_superuser:
         if getattr(user, "role", None) not in (CustomUser.Role.ADMIN, CustomUser.Role.VENUE_OWNER):
-            raise serializers.ValidationError("Faqat joy egasi yoki admin bu resursni boshqarishi mumkin.")
+            raise ValidationError("Faqat joy egasi yoki admin bu resursni boshqarishi mumkin.")
         if getattr(user, "role", None) != CustomUser.Role.ADMIN and value.owner_id != user.id:
-            raise serializers.ValidationError(
+            raise ValidationError(
                 "Siz faqat o'zingizga tegishli zal resurslarini o'zgartirishingiz mumkin."
             )
     return value
 
 
-class ShiftSerializer(serializers.ModelSerializer):
+class ShiftSerializer(ModelSerializer):
     class Meta:
         model = Shift
         fields = ("id", "hall", "name", "start_time", "end_time", "is_active")
@@ -250,7 +252,7 @@ class ShiftSerializer(serializers.ModelSerializer):
         start = attrs.get("start_time", getattr(self.instance, "start_time", None))
         end = attrs.get("end_time", getattr(self.instance, "end_time", None))
         if start and end and start >= end:
-            raise serializers.ValidationError(
+            raise ValidationError(
                 {"end_time": "Tugash vaqti boshlanish vaqtidan keyin bo'lishi shart."}
             )
         if hall:
@@ -258,7 +260,7 @@ class ShiftSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PackageSerializer(serializers.ModelSerializer):
+class PackageSerializer(ModelSerializer):
     class Meta:
         model = Package
         fields = ("id", "hall", "guest_count", "price", "description")
@@ -271,13 +273,13 @@ class PackageSerializer(serializers.ModelSerializer):
         hall = attrs.get("hall", getattr(self.instance, "hall", None))
         guest_count = attrs.get("guest_count", getattr(self.instance, "guest_count", None))
         if hall and guest_count and guest_count > hall.max_capacity:
-            raise serializers.ValidationError(
+            raise ValidationError(
                 {"guest_count": "Mehmonlar soni zal sig'imidan oshmasligi kerak."}
             )
         return attrs
 
 
-class DecorationSerializer(serializers.ModelSerializer):
+class DecorationSerializer(ModelSerializer):
     class Meta:
         model = Decoration
         fields = ("id", "hall", "name", "additional_price")
@@ -287,7 +289,7 @@ class DecorationSerializer(serializers.ModelSerializer):
         return _validate_hall_ownership(self, value)
 
 
-class ShiftBlockSerializer(serializers.ModelSerializer):
+class ShiftBlockSerializer(ModelSerializer):
     class Meta:
         model = ShiftBlock
         fields = ("id", "hall", "shift", "date", "reason")
@@ -301,13 +303,13 @@ class ShiftBlockSerializer(serializers.ModelSerializer):
 
         if user and user.is_authenticated and not user.is_superuser:
             if getattr(user, "role", None) not in (CustomUser.Role.ADMIN, CustomUser.Role.VENUE_OWNER):
-                raise serializers.ValidationError("Faqat joy egasi yoki admin smenani bloklashi mumkin.")
+                raise ValidationError("Faqat joy egasi yoki admin smenani bloklashi mumkin.")
             if getattr(user, "role", None) != CustomUser.Role.ADMIN and hall and hall.owner_id != user.id:
-                raise serializers.ValidationError(
+                raise ValidationError(
                     {"hall": "Siz faqat o'zingizga tegishli zalni bloklay olasiz."}
                 )
         if hall and shift and shift.hall_id != hall.id:
-            raise serializers.ValidationError(
+            raise ValidationError(
                 {"shift": "Tanlangan smena ushbu zalga tegishli emas."}
             )
         return attrs
