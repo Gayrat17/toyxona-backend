@@ -58,6 +58,9 @@ class MediaSerializer(ModelSerializer):
         target = obj.image or obj.file
         if not target or not getattr(target, "name", None):
             return None
+        name = str(target.name)
+        if name.startswith(("http://", "https://")):
+            return name
         url = target.url
         return request.build_absolute_uri(url) if request is not None else url
 
@@ -79,6 +82,9 @@ class BaseVenueSerializer(ModelSerializer):
         request = self.context.get("request")
         if not obj.cover_image or not getattr(obj.cover_image, "name", None):
             return None
+        name = str(obj.cover_image.name)
+        if name.startswith(("http://", "https://")):
+            return name
         url = obj.cover_image.url
         return request.build_absolute_uri(url) if request is not None else url
 

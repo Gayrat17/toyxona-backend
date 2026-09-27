@@ -4,8 +4,7 @@ import re
 from typing import Any, Optional
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.db import models
-from django.db.models.enums import TextChoices
+from django.db.models import EmailField, CharField, BooleanField, BigIntegerField, Index, TextChoices
 
 
 def normalize_phone_number(value: str) -> str:
@@ -86,11 +85,11 @@ class User(AbstractUser):
         ADMIN = "ADMIN", "Admin"
 
     username = None
-    email = models.EmailField(blank=True, null=True)
-    phone_number = models.CharField(max_length=20, unique=True)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.CLIENT)
-    is_verified = models.BooleanField(default=False)
-    telegram_chat_id = models.BigIntegerField(blank=True, null=True, unique=True)
+    email = EmailField(blank=True, null=True)
+    phone_number = CharField(max_length=20, unique=True)
+    role = CharField(max_length=20, choices=Role.choices, default=Role.CLIENT)
+    is_verified = BooleanField(default=False)
+    telegram_chat_id = BigIntegerField(blank=True, null=True, unique=True)
 
     objects = CustomUserManager()
 
@@ -98,7 +97,7 @@ class User(AbstractUser):
     REQUIRED_FIELDS: list[str] = []
 
     class Meta:
-        indexes = [models.Index(fields=["role", "is_active"], name="user_role_active_idx")]
+        indexes = [Index(fields=["role", "is_active"], name="user_role_active_idx")]
 
     def clean(self) -> None:
         super().clean()

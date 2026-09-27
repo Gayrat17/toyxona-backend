@@ -25,6 +25,10 @@ def convert_image_field_to_webp(file_field: Any, quality: int = DEFAULT_WEBP_QUA
     if not file_field or not Image:
         return
 
+    field_name = str(getattr(file_field, "name", ""))
+    if field_name.startswith(("http://", "https://")):
+        return
+
     try:
         filename = os.path.basename(file_field.name)
         _, ext = os.path.splitext(filename)

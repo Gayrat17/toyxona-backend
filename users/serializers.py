@@ -35,6 +35,25 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc)) from exc
 
 
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Serializer for administrator user listing and status management."""
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "phone_number",
+            "first_name",
+            "last_name",
+            "role",
+            "is_verified",
+            "is_staff",
+            "is_active",
+            "date_joined",
+        )
+        read_only_fields = ("id", "phone_number", "date_joined")
+
+
 class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Accept the same local phone formats as registration and profile APIs."""
 
