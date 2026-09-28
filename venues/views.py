@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny, SAFE_METHODS
+from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
@@ -22,6 +23,13 @@ from .serializers import (
     ShiftBlockSerializer,
 )
 from .permissions import IsOwnerOrReadOnly, IsPlatformAdmin
+
+
+class VenuePagination(PageNumberPagination):
+    """Standard pagination for venue list endpoints."""
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 48
 
 
 # =====================================================================
@@ -293,6 +301,11 @@ class WeddingHallListCreateAPIView(APIView):
             'owner', 'region', 'district'
         ).prefetch_related('gallery_images').all()
         queryset = _apply_venue_filters(queryset, request, WeddingHall)
+        paginator = VenuePagination()
+        page = paginator.paginate_queryset(queryset, request)
+        if page is not None:
+            serializer = WeddingHallSerializer(page, many=True, context={'request': request})
+            return paginator.get_paginated_response(serializer.data)
         serializer = WeddingHallSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -379,6 +392,11 @@ class BarListCreateAPIView(APIView):
             'owner', 'region', 'district'
         ).prefetch_related('gallery_images').all()
         queryset = _apply_venue_filters(queryset, request, Bar)
+        paginator = VenuePagination()
+        page = paginator.paginate_queryset(queryset, request)
+        if page is not None:
+            serializer = BarSerializer(page, many=True, context={'request': request})
+            return paginator.get_paginated_response(serializer.data)
         serializer = BarSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 

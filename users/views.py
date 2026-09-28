@@ -44,7 +44,7 @@ class PlatformStatsAPIView(APIView):
     Computes real platform statistics across users, venues, and bookings.
     Calculates live metrics with zero mock values.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         now = timezone.now()

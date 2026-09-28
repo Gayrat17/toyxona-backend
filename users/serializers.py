@@ -25,8 +25,11 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "is_verified",
             "email",
+            "is_staff",
+            "is_active",
+            "date_joined",
         )
-        read_only_fields = ("id", "role", "is_verified")
+        read_only_fields = ("id", "role", "is_verified", "is_staff", "is_active", "date_joined")
 
     def validate_phone_number(self, value: str) -> str:
         try:
@@ -70,6 +73,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
     """Register a client or venue owner; administrators are never self-created."""
 
     password = serializers.CharField(write_only=True, min_length=8)
+    re_password = serializers.CharField(write_only=True, required=False, default="")
 
     class Meta:
         model = User
@@ -77,6 +81,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "id",
             "phone_number",
             "password",
+            "re_password",
             "first_name",
             "last_name",
             "email",
@@ -100,6 +105,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 "Ro'yxatdan o'tishda faqat CLIENT yoki VENUE_OWNER roli tanlanishi mumkin."
             )
         return value
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        re_password = attrs.pop("re_password", "")
+        # Only validate match when re_password is explicitly provided
+        if re_password and attrs.get("password") != re_password:
+            raise serializers.ValidationError({"re_password": "Parollar bir-biriga mos kelmaydi."})
+        return attrs
 
     def create(self, validated_data: Dict[str, Any]) -> User:
         password = validated_data.pop("password")
