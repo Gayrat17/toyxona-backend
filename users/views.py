@@ -3,8 +3,10 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -18,9 +20,11 @@ User = get_user_model()
 
 
 class PhoneTokenObtainPairView(TokenObtainPairView):
-    """Issue JWTs after normalizing the supplied phone number."""
+    """Issue JWTs after normalizing the supplied phone number with strict rate limiting."""
 
     serializer_class = PhoneTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
 
 class AdminUserListAPIView(generics.ListAPIView):
@@ -39,19 +43,22 @@ class AdminUserDetailAPIView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsPlatformAdmin]
 
 
+@extend_schema(tags=["Stats"], summary="Platforma statistikasi (Ommaviy/Admin)")
 class PlatformStatsAPIView(APIView):
     """
     Computes real platform statistics across users, venues, and bookings.
     Calculates live metrics with zero mock values.
+    Public visitors receive public venue/booking counts; financial revenue
+    and deposits are strictly restricted to platform administrators.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, *args, **kwargs):
         now = timezone.now()
         current_year = now.year
         current_month = now.month
 
-        # Counts
+        # Public aggregate counts
         total_users = User.objects.count()
         total_halls = WeddingHall.objects.count()
         total_bars = Bar.objects.count()
@@ -69,45 +76,53 @@ class PlatformStatsAPIView(APIView):
         monthly_bar_bookings = BarBooking.objects.filter(created_at__gte=start_of_month).count()
         monthly_bookings = monthly_hall_bookings + monthly_bar_bookings
 
-        # Platform revenue (turnover from bookings)
-        hall_revenue = HallBooking.objects.aggregate(total=Sum("total_price"))["total"] or Decimal("0")
-        bar_revenue = BarBooking.objects.aggregate(total=Sum("total_price"))["total"] or Decimal("0")
-        total_revenue = hall_revenue + bar_revenue
+        # Sensitive financial metrics: Only platform administrators are permitted to see revenue
+        is_admin = bool(
+            request.user
+            and request.user.is_authenticated
+            and (request.user.is_superuser or getattr(request.user, "role", None) == User.Role.ADMIN)
+        )
 
-        # Deposits
-        hall_deposits = HallBooking.objects.aggregate(total=Sum("deposit_amount"))["total"] or Decimal("0")
-        bar_deposits = BarBooking.objects.aggregate(total=Sum("deposit_amount"))["total"] or Decimal("0")
-        total_deposits = hall_deposits + bar_deposits
-
-        # Last 6 months growth calculation
-        month_names_uz = [
-            "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
-            "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"
-        ]
-
+        total_revenue = "0"
+        total_deposits = "0"
         monthly_growth = []
-        for i in range(5, -1, -1):
-            target_month = current_month - i
-            target_year = current_year
-            while target_month <= 0:
-                target_month += 12
-                target_year -= 1
 
-            count_halls = HallBooking.objects.filter(
-                created_at__year=target_year,
-                created_at__month=target_month
-            ).count()
-            count_bars = BarBooking.objects.filter(
-                created_at__year=target_year,
-                created_at__month=target_month
-            ).count()
-            month_count = count_halls + count_bars
+        if is_admin:
+            hall_revenue = HallBooking.objects.aggregate(total=Sum("total_price"))["total"] or Decimal("0")
+            bar_revenue = BarBooking.objects.aggregate(total=Sum("total_price"))["total"] or Decimal("0")
+            total_revenue = str(hall_revenue + bar_revenue)
 
-            monthly_growth.append({
-                "month": month_names_uz[target_month - 1],
-                "year": target_year,
-                "count": month_count,
-            })
+            hall_deposits = HallBooking.objects.aggregate(total=Sum("deposit_amount"))["total"] or Decimal("0")
+            bar_deposits = BarBooking.objects.aggregate(total=Sum("deposit_amount"))["total"] or Decimal("0")
+            total_deposits = str(hall_deposits + bar_deposits)
+
+            month_names_uz = [
+                "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+                "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"
+            ]
+
+            for i in range(5, -1, -1):
+                target_month = current_month - i
+                target_year = current_year
+                while target_month <= 0:
+                    target_month += 12
+                    target_year -= 1
+
+                count_halls = HallBooking.objects.filter(
+                    created_at__year=target_year,
+                    created_at__month=target_month
+                ).count()
+                count_bars = BarBooking.objects.filter(
+                    created_at__year=target_year,
+                    created_at__month=target_month
+                ).count()
+                month_count = count_halls + count_bars
+
+                monthly_growth.append({
+                    "month": month_names_uz[target_month - 1],
+                    "year": target_year,
+                    "count": month_count,
+                })
 
         return Response({
             "total_users": total_users,
@@ -117,7 +132,7 @@ class PlatformStatsAPIView(APIView):
             "total_regions": total_regions,
             "total_bookings": total_bookings,
             "monthly_bookings": monthly_bookings,
-            "total_revenue": str(total_revenue),
-            "total_deposits": str(total_deposits),
+            "total_revenue": total_revenue,
+            "total_deposits": total_deposits,
             "monthly_growth": monthly_growth,
         })

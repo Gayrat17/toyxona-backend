@@ -19,6 +19,7 @@ from .models import (
     ShiftBlock,
     WeddingHall,
 )
+from .utils import validate_media_file
 
 class DistrictSerializer(ModelSerializer):
     class Meta:
@@ -52,6 +53,16 @@ class MediaSerializer(ModelSerializer):
             "created_at",
         )
         read_only_fields = ("id", "created_at", "image_url")
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        image = attrs.get("image")
+        file = attrs.get("file")
+        media_type = attrs.get("type", "image")
+        if image:
+            validate_media_file(image, is_video=False)
+        if file:
+            validate_media_file(file, is_video=(media_type == "video"))
+        return attrs
 
     def get_image_url(self, obj: Media) -> Optional[str]:
         request = self.context.get("request")
@@ -112,6 +123,14 @@ class BaseVenueSerializer(ModelSerializer):
             raise ValidationError(
                 {"amenities": "Amenities ro'yxat ko'rinishida bo'lishi kerak."}
             )
+
+        # Validate cover image if provided in request
+        request = self.context.get("request")
+        if request and hasattr(request, "FILES"):
+            cover = request.FILES.get("cover_image")
+            if cover:
+                validate_media_file(cover, is_video=False)
+
         return attrs
 
     def _process_gallery_uploads(self, instance: Any, request: Any) -> None:
@@ -120,6 +139,7 @@ class BaseVenueSerializer(ModelSerializer):
         files = request.FILES.getlist("gallery_images")
         files += request.FILES.getlist("gallery_images[]")
         for uploaded_file in files:
+            validate_media_file(uploaded_file, is_video=False)
             Media.objects.create(**{self.venue_fk_field: instance, "image": uploaded_file})
 
     @staticmethod

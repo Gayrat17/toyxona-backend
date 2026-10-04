@@ -109,8 +109,16 @@ class TelegramWebhookView(APIView):
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Response:
         expected_secret = getattr(settings, "TELEGRAM_WEBHOOK_SECRET", "")
         received_secret = request.META.get("HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN", "")
-        if expected_secret and not secrets.compare_digest(received_secret, expected_secret):
-            logger.warning("Rejected Telegram webhook request with an invalid secret")
+
+        # In production, require and verify the Telegram secret token.
+        # In development, check the secret if it is configured.
+        is_invalid_secret = (
+            (not expected_secret or not secrets.compare_digest(received_secret, expected_secret))
+            if not settings.DEBUG
+            else bool(expected_secret and not secrets.compare_digest(received_secret, expected_secret))
+        )
+        if is_invalid_secret:
+            logger.warning("Rejected Telegram webhook request with an invalid or missing secret")
             return Response({"status": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
         try:
