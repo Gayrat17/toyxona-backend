@@ -3,36 +3,36 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.db import models
-from django.db.models import Q
+from django.db.models import Q, Model, TextChoices, ForeignKey, TextField, CASCADE, CheckConstraint, Index, SET_NULL, F, \
+    PositiveIntegerField, DateField, DecimalField, DateTimeField, BooleanField, CharField, TimeField
 
 from venues.models import Bar, Decoration, Package, Shift, WeddingHall
 
 
-class BaseBooking(models.Model):
+class BaseBooking(Model):
     """Common fields shared by hall and bar bookings."""
 
-    class Status(models.TextChoices):
+    class Status(TextChoices):
         HOLD = "HOLD", "Hold"
         PENDING = "PENDING", "Pending"
         CONFIRMED = "CONFIRMED", "Confirmed"
         REJECTED = "REJECTED", "Rejected"
         CANCELLED = "CANCELLED", "Cancelled"
 
-    user = models.ForeignKey(
+    user = ForeignKey(
         "users.User",
-        on_delete=models.CASCADE,
+        on_delete=CASCADE,
         related_name="%(class)s_bookings",
     )
-    date = models.DateField()
-    total_price = models.DecimalField(max_digits=12, decimal_places=2)
-    deposit_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
-    is_deposit_paid = models.BooleanField(default=False)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    meeting_date = models.DateTimeField(null=True, blank=True)
-    admin_notes = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    date = DateField()
+    total_price = DecimalField(max_digits=12, decimal_places=2)
+    deposit_amount = DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    is_deposit_paid = BooleanField(default=False)
+    status = CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    expires_at = DateTimeField(null=True, blank=True)
+    meeting_date = DateTimeField(null=True, blank=True)
+    admin_notes = TextField(null=True, blank=True)
+    created_at = DateTimeField(auto_now_add=True)
 
     class Meta:
         abstract = True
@@ -47,12 +47,12 @@ class BaseBooking(models.Model):
 class HallBooking(BaseBooking):
     """A wedding-hall booking for one date and shift."""
 
-    hall = models.ForeignKey(WeddingHall, on_delete=models.CASCADE, related_name="hall_bookings")
-    shift = models.ForeignKey(Shift, on_delete=models.CASCADE, related_name="hall_bookings")
-    package = models.ForeignKey(Package, on_delete=models.CASCADE, related_name="hall_bookings")
-    decoration = models.ForeignKey(
+    hall = ForeignKey(WeddingHall, on_delete=CASCADE, related_name="hall_bookings")
+    shift = ForeignKey(Shift, on_delete=CASCADE, related_name="hall_bookings")
+    package = ForeignKey(Package, on_delete=CASCADE, related_name="hall_bookings")
+    decoration = ForeignKey(
         Decoration,
-        on_delete=models.SET_NULL,
+        on_delete=SET_NULL,
         null=True,
         blank=True,
         related_name="hall_bookings",
@@ -61,20 +61,20 @@ class HallBooking(BaseBooking):
     class Meta:
         ordering = ["-created_at", "id"]
         indexes = [
-            models.Index(fields=["hall", "date", "shift", "status"], name="hall_booking_availability_idx"),
-            models.Index(fields=["user", "created_at"], name="hall_booking_user_created_idx"),
+            Index(fields=["hall", "date", "shift", "status"], name="hall_booking_availability_idx"),
+            Index(fields=["user", "created_at"], name="hall_booking_user_created_idx"),
         ]
         constraints = [
-            models.CheckConstraint(
+            CheckConstraint(
                 condition=Q(total_price__gte=0),
                 name="hall_booking_total_nonnegative",
             ),
-            models.CheckConstraint(
+            CheckConstraint(
                 condition=Q(deposit_amount__gte=0),
                 name="hall_booking_deposit_nonnegative",
             ),
-            models.CheckConstraint(
-                condition=Q(deposit_amount__lte=models.F("total_price")),
+            CheckConstraint(
+                condition=Q(deposit_amount__lte=F("total_price")),
                 name="hall_booking_deposit_lte_total",
             ),
         ]
@@ -107,32 +107,32 @@ class HallBooking(BaseBooking):
 class BarBooking(BaseBooking):
     """An hourly booking for a bar."""
 
-    bar = models.ForeignKey(Bar, on_delete=models.CASCADE, related_name="bar_bookings")
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    guest_count = models.PositiveIntegerField(null=True, blank=True)
+    bar = ForeignKey(Bar, on_delete=CASCADE, related_name="bar_bookings")
+    start_time = TimeField()
+    end_time = TimeField()
+    guest_count = PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at", "id"]
         indexes = [
-            models.Index(fields=["bar", "date", "start_time", "end_time", "status"], name="bar_booking_availability_idx"),
-            models.Index(fields=["user", "created_at"], name="bar_booking_user_created_idx"),
+            Index(fields=["bar", "date", "start_time", "end_time", "status"], name="bar_booking_availability_idx"),
+            Index(fields=["user", "created_at"], name="bar_booking_user_created_idx"),
         ]
         constraints = [
-            models.CheckConstraint(
+            CheckConstraint(
                 condition=Q(total_price__gte=0),
                 name="bar_booking_total_nonnegative",
             ),
-            models.CheckConstraint(
+            CheckConstraint(
                 condition=Q(deposit_amount__gte=0),
                 name="bar_booking_deposit_nonnegative",
             ),
-            models.CheckConstraint(
-                condition=Q(deposit_amount__lte=models.F("total_price")),
+            CheckConstraint(
+                condition=Q(deposit_amount__lte=F("total_price")),
                 name="bar_booking_deposit_lte_total",
             ),
-            models.CheckConstraint(
-                condition=Q(start_time__lt=models.F("end_time")),
+            CheckConstraint(
+                condition=Q(start_time__lt=F("end_time")),
                 name="bar_booking_start_before_end",
             ),
         ]

@@ -2,6 +2,7 @@
 .env
 .env.local
 *.env
+*
 
 # Django generated media and local database are ignored; migrations are committed.
 # Packaging artifacts
@@ -9,7 +10,7 @@
 
 # Requirements
 requirements.txt
-*/migrations
+*/migrations/
 
 
 # Python & Virtual Environments
