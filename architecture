@@ -1,0 +1,47 @@
+proyekt nega alohida applarga bolingan?
+
+Ran command: `ls -la`
+Ran command: `ls -la backend`
+Viewed README.md:1-92
+Viewed settings.py:30-60
+
+Loyiha (backend) Django arxitekturasining **modullilik (modularity)** va **mas’uliyatlarni ajratish (Separation of Concerns)** tamoyillariga asoslanib alohida ilovalarga (app) bo‘lingan.
+
+Ushbu loyihadagi applar va ularning nima uchun alohida qilinganligining asosiy sabablari:
+
+---
+
+### 1. Har bir appning o‘z aniq vazifasi bor (Single Responsibility)
+Agar barcha modellar, serializerlar va viewlar bitta joyda bo‘lsa, kod chalkashib ketadi (*spaghetti code*). Alohida applar orqali har bir domen ajratilgan:
+
+* [users](file:///Users/macair/PycharmProjects/Toyxona/backend/users) — Foydalanuvchilar, autentifikatsiya (JWT/Djoser), rollar (mijoz, to‘yxona egasi, admin).
+* [venues](file:///Users/macair/PycharmProjects/Toyxona/backend/venues) — Joylar katalogi: to‘yxonalar, barlar, xonalar, xizmat paketlari, fotosuratlar va menyular.
+* [bookings](file:///Users/macair/PycharmProjects/Toyxona/backend/bookings) — Bron qilish biznes mantig‘i: vaqt/smena availability (bandlik) tekshiruvi, double-booking oldini olish, narx hisoblash va statuslar.
+* [notifications](file:///Users/macair/PycharmProjects/Toyxona/backend/notifications) — Bildirishnomalar modeli va Celery orqali fon jarayonlarini boshqarish.
+* [telegram_bot](file:///Users/macair/PycharmProjects/Toyxona/backend/telegram_bot) — Telegram webhook va xabarnomalar integratsiyasi.
+
+---
+
+### 2. Kodni saqlash va tushunish osonligi (Maintainability & Clean Architecture)
+* Qaysidir funksionalda xatolik chiqsa yoki o‘zgartirish kerak bo‘lsa, qayerga qarash aniq: masalan, bron qilish mantig‘i faqat `bookings/` papkasida, Telegram xabarlari esa `telegram_bot/` ichida bo‘ladi.
+* Fayllar hajmi ixcham qoladi (`models.py`, `views.py` bir necha ming qatorga aylanib ketmaydi).
+
+---
+
+### 3. Jamoada ishlash va Git konfliktlarini kamaytirish
+* Bir vaqtning o‘zida bir nechta dasturchi loyihada ishlay oladi: biri `telegram_bot`ni rivojlantirsa, ikkinchisi `venues` yoki `bookings` API ustida ishlaydi.
+* Barcha kod bitta fayl/papkada bo‘lmagani sababli Git `merge conflict`lari sezilarli darajada kamayadi.
+
+---
+
+### 4. Alohida va tezkor testlash (Isolated Testing)
+* Butun loyihani qayta-qayta test qilmasdan, aynan o‘zgartirilgan modulni tezda tekshirish mumkin:
+  ```bash
+  python manage.py test bookings
+  python manage.py test users
+  ```
+
+---
+
+### 5. Kengaytirish va kelajakda mikroxizmatlarga ajratish qulayligi (Scalability)
+* Agar kelgusida, masalan, `telegram_bot` yoki `notifications` alohida servis (microservice yoki standalone worker) sifatida ajratilishi kerak bo‘lsa, ularni butun loyihani buzmasdan osonlik bilan sug‘urib olish yoki mustaqil ishlatish mumkin.
