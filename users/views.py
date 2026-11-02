@@ -1,5 +1,7 @@
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
+import secrets
 from decimal import Decimal
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from django.utils import timezone
@@ -8,13 +10,15 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from bookings.models import BarBooking, HallBooking
 from telegram_bot.permissions import IsPlatformAdmin
 from venues.models import Bar, Region, WeddingHall
 
-from .serializers import AdminUserSerializer, PhoneTokenObtainPairSerializer
+from .models import TelegramAuthSession
+from .serializers import AdminUserSerializer, PhoneTokenObtainPairSerializer, UserSerializer
 
 User = get_user_model()
 
@@ -136,3 +140,127 @@ class PlatformStatsAPIView(APIView):
             "total_deposits": total_deposits,
             "monthly_growth": monthly_growth,
         })
+
+
+def get_bot_username() -> str:
+    from telegram_bot.models import TelegramBotConfig
+    try:
+        config = TelegramBotConfig.load()
+        if config and config.bot_username:
+            return config.bot_username.lstrip("@").strip()
+    except Exception:
+        pass
+    return getattr(settings, "TELEGRAM_BOT_USERNAME", "").lstrip("@").strip()
+
+
+@extend_schema(tags=["Telegram Auth"], summary="Telegram orqali kirish sessiyasini boshlash")
+class TelegramAuthInitView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def post(self, request, *args, **kwargs):
+        session_id = secrets.token_urlsafe(32)
+        expires_at = timezone.now() + timedelta(minutes=10)
+        TelegramAuthSession.objects.create(
+            session_id=session_id,
+            expires_at=expires_at,
+        )
+
+        bot_username = get_bot_username()
+        bot_url = f"https://t.me/{bot_username}?start=auth_{session_id}" if bot_username else ""
+
+        return Response({
+            "session_id": session_id,
+            "bot_username": bot_username,
+            "bot_url": bot_url,
+            "expires_at": expires_at.isoformat(),
+            "expires_in_seconds": 600,
+        }, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Telegram Auth"], summary="Telegram auth sessiyasi holatini tekshirish")
+class TelegramAuthStatusView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, session_id, *args, **kwargs):
+        session = TelegramAuthSession.objects.filter(session_id=session_id).first()
+        if not session:
+            return Response(
+                {"status": "NOT_FOUND", "detail": "Sessiya topilmadi."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if session.status == TelegramAuthSession.Status.COMPLETED:
+            return Response(
+                {"status": "COMPLETED", "detail": "Ushbu sessiya allaqachon yakunlangan."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if session.is_expired():
+            if session.status != TelegramAuthSession.Status.EXPIRED:
+                session.status = TelegramAuthSession.Status.EXPIRED
+                session.save(update_fields=["status"])
+            return Response({"status": "EXPIRED", "detail": "Sessiya muddati tugagan."})
+
+        if session.status == TelegramAuthSession.Status.PENDING:
+            return Response({"status": "PENDING"})
+
+        if session.status == TelegramAuthSession.Status.AUTHENTICATED:
+            user = session.user
+            if not user or not user.is_active:
+                return Response(
+                    {"status": "FAILED", "detail": "Foydalanuvchi hisobi faol emas."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            refresh = RefreshToken.for_user(user)
+
+            # Prevent replay attacks
+            session.status = TelegramAuthSession.Status.COMPLETED
+            session.save(update_fields=["status"])
+
+            return Response({
+                "status": "AUTHENTICATED",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "is_new_user": session.is_new_user,
+                "user": UserSerializer(user).data,
+            })
+
+        return Response({"status": session.status})
+
+
+@extend_schema(tags=["Telegram Auth"], summary="Yangi ro'yxatdan o'tgan foydalanuvchi profil ma'lumotlarini to'ldirish (Rol va Ism)")
+class CompleteProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        role = request.data.get("role")
+        first_name = (request.data.get("first_name") or "").strip()
+        last_name = (request.data.get("last_name") or "").strip()
+
+        allowed_roles = [User.Role.CLIENT, User.Role.VENUE_OWNER]
+        updated_fields = []
+
+        if role and role in allowed_roles:
+            user.role = role
+            updated_fields.append("role")
+
+        if first_name:
+            user.first_name = first_name
+            updated_fields.append("first_name")
+
+        if last_name:
+            user.last_name = last_name
+            updated_fields.append("last_name")
+
+        if updated_fields:
+            user.save(update_fields=updated_fields)
+
+        return Response({
+            "message": "Profil muvaffaqiyatli yangilandi.",
+            "user": UserSerializer(user).data,
+        })
+

@@ -4,7 +4,18 @@ import re
 from typing import Any, Optional
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.db.models import EmailField, CharField, BooleanField, BigIntegerField, Index, TextChoices
+from django.db.models import (
+    BigIntegerField,
+    BooleanField,
+    CharField,
+    DateTimeField,
+    EmailField,
+    ForeignKey,
+    Index,
+    Model,
+    SET_NULL,
+    TextChoices,
+)
 
 
 def normalize_phone_number(value: str) -> str:
@@ -111,3 +122,38 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return f"{self.phone_number} ({self.get_role_display()})"
+
+
+class TelegramAuthSession(Model):
+    """Temporary login/registration session handled via Telegram bot."""
+
+    class Status(TextChoices):
+        PENDING = "PENDING", "Kutilmoqda"
+        AUTHENTICATED = "AUTHENTICATED", "Tasdiqlandi"
+        COMPLETED = "COMPLETED", "Yakunlandi"
+        EXPIRED = "EXPIRED", "Muddati o'tgan"
+
+    session_id = CharField(max_length=64, unique=True, db_index=True)
+    status = CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    user = ForeignKey(User, on_delete=SET_NULL, null=True, blank=True, related_name="telegram_sessions")
+    telegram_chat_id = BigIntegerField(null=True, blank=True)
+    phone_number = CharField(max_length=20, null=True, blank=True)
+    is_new_user = BooleanField(default=False)
+    created_at = DateTimeField(auto_now_add=True)
+    expires_at = DateTimeField()
+
+    class Meta:
+        verbose_name = "Telegram Auth Sessiyasi"
+        verbose_name_plural = "Telegram Auth Sessiyalari"
+        indexes = [
+            Index(fields=["session_id", "status"]),
+            Index(fields=["telegram_chat_id", "status"]),
+        ]
+
+    def is_expired(self) -> bool:
+        from django.utils import timezone
+        return timezone.now() >= self.expires_at
+
+    def __str__(self) -> str:
+        return f"AuthSession({self.session_id[:8]}..., status={self.status})"
+

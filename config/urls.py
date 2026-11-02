@@ -11,7 +11,12 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
-from users.views import PhoneTokenObtainPairView
+from users.views import (
+    CompleteProfileView,
+    PhoneTokenObtainPairView,
+    TelegramAuthInitView,
+    TelegramAuthStatusView,
+)
 from .views import health_check
 
 urlpatterns = [
@@ -25,8 +30,11 @@ urlpatterns = [
     path('', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
-    # Authentication & User Management (Djoser & SimpleJWT)
+    # Authentication & User Management (Djoser & SimpleJWT & Telegram)
     path("api/v1/auth/jwt/create/", PhoneTokenObtainPairView.as_view(), name="jwt-create"),
+    path("api/v1/auth/telegram/init/", TelegramAuthInitView.as_view(), name="telegram-auth-init-direct"),
+    path("api/v1/auth/telegram/status/<str:session_id>/", TelegramAuthStatusView.as_view(), name="telegram-auth-status-direct"),
+    path("api/v1/auth/complete-profile/", CompleteProfileView.as_view(), name="complete-profile-direct"),
     path('api/v1/auth/', include('djoser.urls')),
     path('api/v1/auth/', include('djoser.urls.jwt')),
 

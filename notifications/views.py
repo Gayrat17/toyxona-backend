@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
@@ -13,7 +14,7 @@ from rest_framework.views import APIView
 
 from bookings.models import BarBooking, BaseBooking, HallBooking
 from bookings.services import update_booking_status
-from users.models import User as CustomUser, normalize_phone_number
+from users.models import User as CustomUser, normalize_phone_number, TelegramAuthSession
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -147,8 +148,40 @@ class TelegramWebhookView(APIView):
         try:
             import telegram_bot.views as bot_views
 
-            command = text.split(maxsplit=1)[0].split("@", 1)[0] if text else ""
+            parts = text.split(maxsplit=1)
+            command = parts[0].split("@", 1)[0] if parts else ""
+            payload = parts[1].strip() if len(parts) > 1 else ""
+
             if command == "/start":
+                if payload.startswith("auth_"):
+                    auth_session_id = payload[5:].strip()
+                    session = TelegramAuthSession.objects.filter(
+                        session_id=auth_session_id,
+                        status=TelegramAuthSession.Status.PENDING,
+                        expires_at__gt=timezone.now(),
+                    ).first()
+
+                    if session:
+                        session.telegram_chat_id = chat_id
+                        session.save(update_fields=["telegram_chat_id"])
+                        bot_views.send_telegram_message(
+                            chat_id,
+                            "👑 <b>To'yxona & Restoran platformasi</b>\n\n"
+                            "Saytga xavfsiz kirish uchun pastdagi tugmani bosing va telefon raqamingizni tasdiqlang 👇",
+                            reply_markup={
+                                "keyboard": [[{"text": "📱 Telefon raqamni tasdiqlash", "request_contact": True}]],
+                                "one_time_keyboard": True,
+                                "resize_keyboard": True,
+                            },
+                        )
+                    else:
+                        bot_views.send_telegram_message(
+                            chat_id,
+                            "⚠️ Ushbu kirish havolasining muddati o'tgan yoki allaqachon ishlatilgan.\n"
+                            "Iltimos, saytdan qaytadan 'Telegram orqali kirish' tugmasini bosing.",
+                        )
+                    return
+
                 bot_views.send_telegram_message(
                     chat_id,
                     "Assalomu alaykum! Tizimdagi hisobingizni ulash uchun pastdagi tugma orqali telefon raqamingizni yuboring.",
@@ -176,20 +209,69 @@ class TelegramWebhookView(APIView):
                 return
 
             phone_number = contact.get("phone_number")
+            try:
+                normalized_phone = normalize_phone_number(phone_number)
+            except ValueError:
+                normalized_phone = phone_number
+
+            # Free up the telegram_chat_id if it was linked to an older/different phone number
+            User.objects.filter(telegram_chat_id=chat_id).exclude(phone_number=normalized_phone).update(telegram_chat_id=None)
+
             user = find_user_by_phone(phone_number)
+            is_new_user = False
+            from_user = message.get("from", {}) or {}
+            first_name = (from_user.get("first_name") or "").strip() or "Foydalanuvchi"
+            last_name = (from_user.get("last_name") or "").strip()
+
             if user:
                 user.telegram_chat_id = chat_id
-                user.save(update_fields=["telegram_chat_id"])
+                user.is_verified = True
+                user.save(update_fields=["telegram_chat_id", "is_verified"])
+            else:
+                user = User.objects.create_user(
+                    phone_number=normalized_phone,
+                    first_name=first_name,
+                    last_name=last_name,
+                    role=CustomUser.Role.CLIENT,
+                    is_verified=True,
+                    telegram_chat_id=chat_id,
+                )
+                is_new_user = True
+
+            # Check if there is an active pending auth session for this chat
+            pending_session = TelegramAuthSession.objects.filter(
+                telegram_chat_id=chat_id,
+                status=TelegramAuthSession.Status.PENDING,
+                expires_at__gt=timezone.now(),
+            ).order_by("-created_at").first()
+
+            if pending_session:
+                pending_session.user = user
+                pending_session.phone_number = user.phone_number
+                pending_session.status = TelegramAuthSession.Status.AUTHENTICATED
+                pending_session.is_new_user = is_new_user
+                pending_session.save(update_fields=["user", "phone_number", "status", "is_new_user"])
+
                 bot_views.send_telegram_message(
                     chat_id,
-                    "✅ Hisobingiz muvaffaqiyatli ulandi! Endi bron xabarlarini shu yerda qabul qilasiz.",
+                    "✅ <b>Muvaffaqiyatli tasdiqlandi!</b>\n\n"
+                    "Siz To'yxona platformasiga kirdingiz. Brauzeringizga qaytishingiz mumkin.",
                     reply_markup={"remove_keyboard": True},
                 )
             else:
-                bot_views.send_telegram_message(
-                    chat_id,
-                    f"Kechirasiz, tizimda {phone_number} raqamli foydalanuvchi topilmadi. Iltimos, saytda ro'yxatdan o'tgan raqamingiz orqali qayta urinib ko'ring.",
-                )
+                if is_new_user:
+                    bot_views.send_telegram_message(
+                        chat_id,
+                        "✅ <b>Hisobingiz yaratildi va Telegramingiz muvaffaqiyatli ulandi!</b>\n"
+                        "Endi sayt orqali xizmatlardan foydalanishingiz mumkin.",
+                        reply_markup={"remove_keyboard": True},
+                    )
+                else:
+                    bot_views.send_telegram_message(
+                        chat_id,
+                        "✅ Hisobingiz muvaffaqiyatli ulandi! Endi bron xabarlarini shu yerda qabul qilasiz.",
+                        reply_markup={"remove_keyboard": True},
+                    )
         except Exception:
             logger.exception("Error handling Telegram message")
 
