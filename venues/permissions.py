@@ -14,7 +14,7 @@ class IsPlatformAdmin(permissions.BasePermission):
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Public reads; authenticated venue owners/admins may write their data."""
+    """Public reads; authenticated users can create venues; owners/admins can edit/delete."""
 
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
@@ -25,7 +25,7 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             and user.is_authenticated
             and (
                 user.is_superuser
-                or getattr(user, "role", None) in {"VENUE_OWNER", "ADMIN"}
+                or getattr(user, "role", None) in {"VENUE_OWNER", "ADMIN", "CLIENT"}
             )
         )
 
@@ -42,7 +42,6 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
         if owner is None and hasattr(obj, "hall"):
             owner = obj.hall.owner
         return bool(
-            getattr(user, "role", None) == "VENUE_OWNER"
-            and owner is not None
+            owner is not None
             and owner.id == user.id
         )

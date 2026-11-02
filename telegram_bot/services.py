@@ -94,7 +94,12 @@ def configure_telegram_bot(config_instance) -> bool:
     _post(
         token,
         "setMyCommands",
-        {"commands": [{"command": "start", "description": "Hisobni ulash va bronlarni qabul qilish"}]},
+        {
+            "commands": [
+                {"command": "start", "description": "Hisobni ulash va xizmatlardan foydalanish"},
+                {"command": "password", "description": "Saytga kirish uchun parol o'rnatish"},
+            ]
+        },
     )
 
     webhook_url = (config_instance.webhook_url or "").strip()

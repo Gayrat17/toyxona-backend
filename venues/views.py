@@ -309,11 +309,15 @@ class WeddingHallListCreateAPIView(APIView):
         serializer = WeddingHallSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
-    @extend_schema(summary="Yangi to'yxona qo'shish (Faqat Joy egalari)")
+    @extend_schema(summary="Yangi to'yxona qo'shish (Joy egalari va platforma hamkorlari)")
     def post(self, request):
         serializer = WeddingHallSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        serializer.save(owner=request.user)
+        user = request.user
+        if getattr(user, 'role', None) == User.Role.CLIENT:
+            user.role = User.Role.VENUE_OWNER
+            user.save(update_fields=['role'])
+        serializer.save(owner=user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -400,11 +404,15 @@ class BarListCreateAPIView(APIView):
         serializer = BarSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
-    @extend_schema(summary="Yangi bar qo'shish (Faqat Joy egalari)")
+    @extend_schema(summary="Yangi bar qo'shish (Joy egalari va platforma hamkorlari)")
     def post(self, request):
         serializer = BarSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        serializer.save(owner=request.user)
+        user = request.user
+        if getattr(user, 'role', None) == User.Role.CLIENT:
+            user.role = User.Role.VENUE_OWNER
+            user.save(update_fields=['role'])
+        serializer.save(owner=user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 

@@ -161,7 +161,7 @@ class TelegramAuthInitView(APIView):
 
     def post(self, request, *args, **kwargs):
         session_id = secrets.token_urlsafe(32)
-        expires_at = timezone.now() + timedelta(minutes=10)
+        expires_at = timezone.now() + timedelta(minutes=3)
         TelegramAuthSession.objects.create(
             session_id=session_id,
             expires_at=expires_at,
@@ -175,7 +175,7 @@ class TelegramAuthInitView(APIView):
             "bot_username": bot_username,
             "bot_url": bot_url,
             "expires_at": expires_at.isoformat(),
-            "expires_in_seconds": 600,
+            "expires_in_seconds": 180,
         }, status=status.HTTP_201_CREATED)
 
 

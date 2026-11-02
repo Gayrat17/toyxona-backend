@@ -193,6 +193,50 @@ class TelegramWebhookView(APIView):
                 )
                 return
 
+            if command in ["/password", "/parol", "/setpassword"]:
+                user = User.objects.filter(telegram_chat_id=chat_id).first()
+                if not user:
+                    bot_views.send_telegram_message(
+                        chat_id,
+                        "⚠️ <b>Hisobingiz topilmadi!</b>\n\n"
+                        "Parol o'rnatish uchun avval pastdagi tugma orqali telefon raqamingizni yuboring:",
+                        reply_markup={
+                            "keyboard": [[{"text": "📱 Telefon raqamni yuborish", "request_contact": True}]],
+                            "one_time_keyboard": True,
+                            "resize_keyboard": True,
+                        },
+                    )
+                    return
+
+                new_password = payload.strip()
+                if not new_password:
+                    bot_views.send_telegram_message(
+                        chat_id,
+                        "🔑 <b>Sayt uchun parol o'rnatish</b>\n\n"
+                        "Iltimos, yangi parolni quyidagi ko'rinishda yuboring:\n"
+                        "<code>/password YangiParol123</code>\n\n"
+                        "<i>(Parol kamida 8 ta belgidan iborat bo'lishi kerak)</i>",
+                    )
+                    return
+
+                if len(new_password) < 8:
+                    bot_views.send_telegram_message(
+                        chat_id,
+                        "❌ Parol juda qisqa! Kamida 8 ta belgidan iborat bo'lishi kerak.\n"
+                        "Qaytadan urinib ko'ring: <code>/password YangiParol123</code>",
+                    )
+                    return
+
+                user.set_password(new_password)
+                user.save(update_fields=["password"])
+
+                bot_views.send_telegram_message(
+                    chat_id,
+                    f"✅ <b>Parolingiz muvaffaqiyatli o'rnatildi!</b>\n\n"
+                    f"Endi brauzerdan telefon raqamingiz (<b>{user.phone_number}</b>) va ushbu parol orqali to'g'ridan-to'g'ri saytga kirishingiz mumkin.",
+                )
+                return
+
             if not contact:
                 return
 
@@ -255,21 +299,23 @@ class TelegramWebhookView(APIView):
                 bot_views.send_telegram_message(
                     chat_id,
                     "✅ <b>Muvaffaqiyatli tasdiqlandi!</b>\n\n"
-                    "Siz To'yxona platformasiga kirdingiz. Brauzeringizga qaytishingiz mumkin.",
+                    "Siz To'yxona platformasiga kirdingiz. Brauzeringizga qaytishingiz mumkin.\n\n"
+                    "💡 <i>Saytga kelgusida parol orqali ham kirish uchun botga <code>/password YangiParol123</code> deb yozishingiz mumkin.</i>",
                     reply_markup={"remove_keyboard": True},
                 )
             else:
                 if is_new_user:
                     bot_views.send_telegram_message(
                         chat_id,
-                        "✅ <b>Hisobingiz yaratildi va Telegramingiz muvaffaqiyatli ulandi!</b>\n"
-                        "Endi sayt orqali xizmatlardan foydalanishingiz mumkin.",
+                        "✅ <b>Hisobingiz yaratildi va Telegramingiz muvaffaqiyatli ulandi!</b>\n\n"
+                        "💡 <i>Saytga kelgusida parol orqali ham kirish uchun botga <code>/password YangiParol123</code> deb yozishingiz mumkin.</i>",
                         reply_markup={"remove_keyboard": True},
                     )
                 else:
                     bot_views.send_telegram_message(
                         chat_id,
-                        "✅ Hisobingiz muvaffaqiyatli ulandi! Endi bron xabarlarini shu yerda qabul qilasiz.",
+                        "✅ Hisobingiz muvaffaqiyatli ulandi! Endi bron xabarlarini shu yerda qabul qilasiz.\n\n"
+                        "💡 <i>Saytga parol orqali kirish uchun <code>/password YangiParol123</code> buyrug'idan foydalaning.</i>",
                         reply_markup={"remove_keyboard": True},
                     )
         except Exception:
